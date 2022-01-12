@@ -35,6 +35,10 @@ func (ws *WorkingSet) UploadCompleted(w http.ResponseWriter, r *http.Request) {
 
 	expSize, err := strconv.Atoi(r.FormValue("size"))
 
+	if err != nil {
+		fmt.Fprintf(w, "size error, err : %v", err)
+	}
+
 	if st, err := os.Stat(pat); err == nil {
 		if st.Size() == int64(expSize) {
 

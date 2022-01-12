@@ -128,6 +128,7 @@ func handleRequests(ws *rendererapi.WorkingSet) {
 	myRouter.HandleFunc("/uploadCompleted", ws.UploadCompleted)
 	myRouter.HandleFunc("/abortJob", ws.AbortJob)
 	myRouter.HandleFunc("/setAvailable", ws.SetAvailable)
+	myRouter.HandleFunc("/postNode", ws.PostNode)
 
 	log.Fatal(http.ListenAndServeTLS(":9000", ws.Config.Certname+".cert", ws.Config.Certname+".key", myRouter))
 }

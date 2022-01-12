@@ -201,8 +201,12 @@ func InsertProjectsInDB(db *sql.DB, it []*render.Task) error {
 	rq := "INSERT INTO projects VALUES(?,?,?,?,?,?,?,?,?)"
 	statement, err := db.Prepare(rq)
 
+	if err != nil {
+		return err
+	}
+
 	for i := 0; i < len(it); i++ {
-		statement.Exec(
+		_, err = statement.Exec(
 			it[i].Project,
 			it[i].ID,
 			it[i].Input,
@@ -216,6 +220,30 @@ func InsertProjectsInDB(db *sql.DB, it []*render.Task) error {
 			tx.Rollback()
 			return err
 		}
+	}
+
+	return tx.Commit()
+}
+
+func InsertNodeInDB(db *sql.DB, n *node.Node) error {
+	tx, err := db.Begin()
+
+	if err != nil {
+		return err
+	}
+
+	rq := "INSERT INTO compute_nodes VALUES(?,?,?,?)"
+	statement, err := db.Prepare(rq)
+
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	_, err = statement.Exec(n.Name, n.IP, n.APIKey, n.State())
+
+	if err != nil {
+		tx.Rollback()
+		return nil
 	}
 
 	return tx.Commit()

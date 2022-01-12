@@ -12,17 +12,18 @@ import (
 
 //WorkingSet contains variables for main to work
 type WorkingSet struct {
-	Db             *sql.DB
-	Uploading      []*render.Task
-	Waiting        []*render.Task
-	Completed      []*render.Task
-	RenderNodes    []*node.Node
-	Renders        []*Render
-	Config         Configuration
-	UploadingMutex sync.Mutex
-	WaitingMutex   sync.Mutex
-	CompletedMutex sync.Mutex
-	RendersMutex   sync.Mutex
+	Db               *sql.DB
+	Uploading        []*render.Task
+	Waiting          []*render.Task
+	Completed        []*render.Task
+	RenderNodes      []*node.Node
+	Renders          []*Render
+	Config           Configuration
+	UploadingMutex   sync.Mutex
+	WaitingMutex     sync.Mutex
+	CompletedMutex   sync.Mutex
+	RendersMutex     sync.Mutex
+	RenderNodesMutex sync.Mutex
 }
 
 type ReturnValue struct {
