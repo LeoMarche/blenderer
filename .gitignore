@@ -8,4 +8,4 @@ src/main
 src/client/client
 src/cli/cli
 files
-*.sqlite
+src/*.sqlite
