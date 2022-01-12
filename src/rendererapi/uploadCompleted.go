@@ -12,7 +12,7 @@ import (
 )
 
 //UploadCompleted must be triggered by client when the upload is completed in the good folder
-//The request should be a post with values id, api_key, size and project
+//The request should be a post with values id, api_key, size and project and input
 func (ws *WorkingSet) UploadCompleted(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" || r.URL.Path != "/uploadCompleted" {
 		http.Error(w, "404 not found.", http.StatusNotFound)
