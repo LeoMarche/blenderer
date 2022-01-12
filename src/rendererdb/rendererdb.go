@@ -87,15 +87,13 @@ func LoadNodeFromDB(db *sql.DB, t *[]*node.Node) {
 		var apiKey string
 		var st string
 		row.Scan(&na, &ip, &apiKey, &st)
-		n := node.Node{
+
+		*t = append(*t, &node.Node{
 			Name:   na,
 			IP:     ip,
 			APIKey: apiKey,
-		}
-
-		n.SetState(st)
-
-		*t = append(*t, &n)
+		})
+		(*t)[len(*t)].SetState(st)
 	}
 }
 
@@ -113,19 +111,19 @@ func LoadTasksFromDB(db *sql.DB, t *[]*render.Task) {
 		var fr int
 
 		row.Scan(&pr, &id, &in, &ou, &fr, &st, &rN, &rV, &sT)
-		ta := new(render.Task)
 
-		ta.Project = pr
-		ta.ID = id
-		ta.Input = in
-		ta.Output = ou
-		ta.Frame = fr
-		ta.State = st
-		ta.RendererName = rN
-		ta.RendererVersion = rV
-		ta.StartTime = sT
 		if st != "failed" && st != "completed" {
-			*t = append(*t, ta)
+			*t = append(*t, &render.Task{
+				Project:         pr,
+				ID:              id,
+				Input:           in,
+				Output:          ou,
+				Frame:           fr,
+				State:           st,
+				RendererName:    rN,
+				RendererVersion: rV,
+				StartTime:       sT,
+			})
 		}
 	}
 }
