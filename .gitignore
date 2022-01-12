@@ -1,0 +1,6 @@
+src/host.cert
+src/host.key
+src/main.json
+src/client/client.json
+go-renderer.sql
+testdata
