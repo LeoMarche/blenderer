@@ -82,24 +82,38 @@ func loadConfig(configPath string) (rendererapi.Configuration, error) {
 //This describes the start sequence of the program
 func startSequence(configPath string, nodesT *[]*node.Node, tasksT *[]*render.Task) (*sql.DB, rendererapi.Configuration) {
 	c, err := loadConfig(configPath)
-	fmt.Println("##Config loaded")
+	fmt.Println("	-> Config loaded")
+
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	dB := rendererdb.LoadDatabase(c.DBName)
-	fmt.Println("##Database created")
+
+	dB, err := rendererdb.LoadDatabase(c.DBName)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	fmt.Println("	-> Database created")
 
 	//loading servers and tasks
-	rendererdb.LoadNodeFromDB(dB, nodesT)
-	rendererdb.LoadTasksFromDB(dB, tasksT)
+	err = rendererdb.LoadNodeFromDB(dB, nodesT)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	err = rendererdb.LoadTasksFromDB(dB, tasksT)
+
+	if err != nil {
+		log.Fatal(err.Error())
+	}
 
 	//loading server api_keys
 	for i := 0; i < len(*nodesT); i++ {
 		c.UserAPIKeys = append(c.UserAPIKeys, (*nodesT)[i].APIKey)
 	}
 
-	fmt.Println("##Loaded lists")
-
+	fmt.Println("	-> Lists loaded")
 	return dB, c
 }
 
@@ -120,6 +134,8 @@ func handleRequests(ws *rendererapi.WorkingSet) {
 
 func run(configPath string) {
 
+	fmt.Println("### Starting up !")
+
 	//Initializing working arrays
 	var nodesT *[]*node.Node = new([]*node.Node)
 	var tasksT *[]*render.Task = new([]*render.Task)
@@ -132,6 +148,8 @@ func run(configPath string) {
 		Config:      cg,
 		RenderNodes: *nodesT,
 	}
+
+	fmt.Println("### Populating WorkingSet")
 
 	for i := 0; i < len(*tasksT); i++ {
 
@@ -148,7 +166,10 @@ func run(configPath string) {
 		}
 	}
 
+	fmt.Println("### Starting background tasks updates")
 	go updateWS(&ws)
+
+	fmt.Println("### Starting web server")
 	handleRequests(&ws)
 }
 

@@ -25,15 +25,7 @@ func (ws *WorkingSet) GetAllRenderTasks(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	type taskToSend struct {
-		Project   string
-		ID        string
-		Percent   float64
-		Nb        int
-		StartTime string
-	}
-
-	ret := new([]taskToSend)
+	ret := new([]TaskToSend)
 	lid := new([]string)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -44,7 +36,7 @@ func (ws *WorkingSet) GetAllRenderTasks(w http.ResponseWriter, r *http.Request) 
 		id = -1
 		id = isIn(ws.Waiting[i].ID, *lid)
 		if id == -1 {
-			newTTS := taskToSend{ws.Waiting[i].Project, ws.Waiting[i].ID, 0.0, 0, ws.Waiting[i].StartTime}
+			newTTS := TaskToSend{ws.Waiting[i].Project, ws.Waiting[i].ID, 0.0, 0, ws.Waiting[i].StartTime}
 			*ret = append(*ret, newTTS)
 			*lid = append(*lid, ws.Waiting[i].ID)
 			id = len(*lid) - 1
@@ -56,7 +48,7 @@ func (ws *WorkingSet) GetAllRenderTasks(w http.ResponseWriter, r *http.Request) 
 		id = -1
 		id = isIn(ws.Renders[i].myTask.ID, *lid)
 		if id == -1 {
-			newTTS := taskToSend{ws.Renders[i].myTask.Project, ws.Renders[i].myTask.ID, 0.0, 0, ws.Renders[i].myTask.StartTime}
+			newTTS := TaskToSend{ws.Renders[i].myTask.Project, ws.Renders[i].myTask.ID, 0.0, 0, ws.Renders[i].myTask.StartTime}
 			*ret = append(*ret, newTTS)
 			*lid = append(*lid, ws.Renders[i].myTask.ID)
 			id = len(*lid) - 1
@@ -71,7 +63,7 @@ func (ws *WorkingSet) GetAllRenderTasks(w http.ResponseWriter, r *http.Request) 
 		id = -1
 		id = isIn(ws.Completed[i].ID, *lid)
 		if id == -1 {
-			newTTS := taskToSend{ws.Completed[i].Project, ws.Completed[i].ID, 0.0, 0, ws.Completed[i].StartTime}
+			newTTS := TaskToSend{ws.Completed[i].Project, ws.Completed[i].ID, 0.0, 0, ws.Completed[i].StartTime}
 			*ret = append(*ret, newTTS)
 			*lid = append(*lid, ws.Completed[i].ID)
 			id = len(*lid) - 1

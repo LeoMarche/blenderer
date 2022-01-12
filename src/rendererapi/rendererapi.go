@@ -2,12 +2,12 @@ package rendererapi
 
 import (
 	"database/sql"
-	"log"
 	"net/http"
 	"sync"
 
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/render"
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //WorkingSet contains variables for main to work
@@ -25,8 +25,16 @@ type WorkingSet struct {
 	RendersMutex   sync.Mutex
 }
 
-type returnvalue struct {
+type ReturnValue struct {
 	State string
+}
+
+type TaskToSend struct {
+	Project   string
+	ID        string
+	Percent   float64
+	Nb        int
+	StartTime string
 }
 
 func getIP(r *http.Request) string {
@@ -87,70 +95,9 @@ func (r *Render) GetState() string {
 }
 
 //This function updates states in database using state of objects
-func (r *Render) updateDatabase(db *sql.DB) {
+func (r *Render) UpdateDatabase(db *sql.DB) {
 
-	reqTask := "UPDATE projects SET state = ? WHERE project = ? AND id = ? AND frame = ?"
-	reqNode := "UPDATE compute_nodes SET state = ? WHERE name = ? AND ip = ?"
+	rendererdb.UpdateTaskInDB(db, r.myTask)
+	rendererdb.UpdateNodeInDB(db, r.myNode)
 
-	tx, e := db.Begin()
-	if e != nil {
-		log.Fatal(e.Error())
-	}
-	statement, err := db.Prepare(reqTask)
-	if err != nil {
-		tx.Rollback()
-		log.Fatal(err.Error())
-	}
-	statement.Exec(r.myTask.State, r.myTask.Project, r.myTask.ID, r.myTask.Frame)
-
-	statement, err = db.Prepare(reqNode)
-	if err != nil {
-		tx.Rollback()
-		log.Fatal(err.Error())
-	}
-	statement.Exec(r.myNode.State(), r.myNode.Name, r.myNode.IP)
-	tx.Commit()
-}
-
-//Updates a project in database
-func updateProjectinDB(db *sql.DB, rt *render.Task) {
-	reqTask := "UPDATE projects SET state = ? WHERE project = ? AND id = ? AND frame = ?"
-	tx, e := db.Begin()
-	if e != nil {
-		log.Fatal(e.Error())
-	}
-	statement, err := db.Prepare(reqTask)
-	if err != nil {
-		tx.Rollback()
-		log.Fatal(err.Error())
-	}
-	statement.Exec(rt.State, rt.Project, rt.ID, rt.Frame)
-	tx.Commit()
-}
-
-//Insert a list of projects in database
-func insertProjectsInDB(db *sql.DB, it []*render.Task) {
-	rq := "INSERT INTO projects VALUES(?,?,?,?,?,?,?,?,?)"
-	tx, e := db.Begin()
-	if e != nil {
-		log.Fatal(e.Error())
-	}
-	statement, err := db.Prepare(rq)
-	for i := 0; i < len(it); i++ {
-		statement.Exec(
-			it[i].Project,
-			it[i].ID,
-			it[i].Input,
-			it[i].Output,
-			it[i].Frame,
-			it[i].State,
-			it[i].RendererName,
-			it[i].RendererVersion,
-			it[i].StartTime)
-		if err != nil {
-			tx.Rollback()
-			log.Fatal(err.Error())
-		}
-	}
-	err = tx.Commit()
 }

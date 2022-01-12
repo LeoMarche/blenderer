@@ -123,7 +123,7 @@ func TestUpdateJob(t *testing.T) {
 		UserAPIKeys: []string{"test_api"},
 	}
 
-	db := rendererdb.LoadDatabase(cg.DBName)
+	db, _ := rendererdb.LoadDatabase(cg.DBName)
 
 	nd := node.Node{
 		Name:   "localhost",
@@ -166,7 +166,7 @@ func TestUpdateJob(t *testing.T) {
 
 	expectedMem := []string{"2.0", "2.0", "0.0", "0.0", "0.0"}
 	expectedPercent := []string{"1.0", "1.0", "100.0", "100.0", "100.0"}
-	expectedReturn := []returnvalue{
+	expectedReturn := []ReturnValue{
 		{State: "OK"},
 		{State: "Error : No matching Renders"},
 		{State: "OK"},
@@ -189,7 +189,7 @@ func TestUpdateJob(t *testing.T) {
 		ws.UpdateJob(w, r)
 		resp := w.Result()
 		body, _ := ioutil.ReadAll(resp.Body)
-		dt := new(returnvalue)
+		dt := new(ReturnValue)
 		json.Unmarshal(body, dt)
 
 		//Asserts
@@ -229,7 +229,7 @@ func TestGetJob(t *testing.T) {
 		UserAPIKeys: []string{"test_api"},
 	}
 
-	db := rendererdb.LoadDatabase(cg.DBName)
+	db, _ := rendererdb.LoadDatabase(cg.DBName)
 
 	nd := node.Node{
 		Name:   "localhost",

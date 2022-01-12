@@ -68,7 +68,7 @@ func (ws *WorkingSet) GetJob(w http.ResponseWriter, r *http.Request) {
 				ws.Renders = append(ws.Renders, &rd)
 				ws.RendersMutex.Unlock()
 
-				rd.updateDatabase(ws.Db)
+				rd.UpdateDatabase(ws.Db)
 			}
 			break
 		}

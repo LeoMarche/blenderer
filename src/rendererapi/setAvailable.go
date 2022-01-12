@@ -49,7 +49,7 @@ func (ws *WorkingSet) SetAvailable(w http.ResponseWriter, r *http.Request) {
 	n.Free()
 
 	w.Header().Set("Content-Type", "application/json")
-	js, err := json.Marshal(returnvalue{"OK"})
+	js, err := json.Marshal(ReturnValue{"OK"})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

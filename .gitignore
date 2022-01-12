@@ -4,3 +4,6 @@ src/main.json
 src/client/client.json
 go-renderer.sql
 testdata
+src/main
+src/client/client
+src/cli/cli

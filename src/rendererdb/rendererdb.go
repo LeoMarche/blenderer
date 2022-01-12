@@ -48,69 +48,80 @@ func createTable(db *sql.DB) {
 }
 
 //LoadDatabase loads a sqlite database from a file
-func LoadDatabase(dbName string) *sql.DB {
+func LoadDatabase(dbName string) (*sql.DB, error) {
 
 	var dB *sql.DB
 
 	if _, err := os.Stat(dbName); err == nil {
 		dB, err = sql.Open("sqlite3", dbName)
 		if err != nil {
-			log.Fatal(err.Error())
+			return nil, err
 		}
 	} else {
 		file, err := os.Create(dbName)
 		if err != nil {
-			log.Fatal(err.Error())
+			return nil, err
 		}
 		file.Close()
 		dB, err = sql.Open("sqlite3", dbName)
 		if err != nil {
-			log.Fatal(err.Error())
+			return nil, err
 		}
 		createTable(dB)
 	}
 
-	return dB
+	return dB, nil
 }
 
 //LoadNodeFromDB loads nodes from a sqlite database
-func LoadNodeFromDB(db *sql.DB, t *[]*node.Node) {
+func LoadNodeFromDB(db *sql.DB, t *[]*node.Node) error {
 	row, err := db.Query("SELECT * FROM compute_nodes")
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
 	defer row.Close()
+
 	for row.Next() { // Iterate and fetch the records from result cursor
-		var na string
-		var ip string
-		var apiKey string
-		var st string
-		row.Scan(&na, &ip, &apiKey, &st)
+		var na, ip, apiKey, st string
+
+		err = row.Scan(&na, &ip, &apiKey, &st)
+
+		if err != nil {
+			return err
+		}
 
 		*t = append(*t, &node.Node{
 			Name:   na,
 			IP:     ip,
 			APIKey: apiKey,
 		})
-		(*t)[len(*t)].SetState(st)
+		(*t)[len(*t)-1].SetState(st)
 	}
+	return nil
 }
 
 //LoadTasksFromDB loads tasks from sqlite db
-func LoadTasksFromDB(db *sql.DB, t *[]*render.Task) {
+func LoadTasksFromDB(db *sql.DB, t *[]*render.Task) error {
 	row, err := db.Query("SELECT * FROM projects")
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
 	defer row.Close()
+
 	for row.Next() {
 
 		var pr, id, in, ou, st, rN, rV, sT string
 		var fr int
 
-		row.Scan(&pr, &id, &in, &ou, &fr, &st, &rN, &rV, &sT)
+		err = row.Scan(&pr, &id, &in, &ou, &fr, &st, &rN, &rV, &sT)
+
+		if err != nil {
+			return err
+		}
 
 		if st != "failed" && st != "completed" {
 			*t = append(*t, &render.Task{
@@ -126,4 +137,86 @@ func LoadTasksFromDB(db *sql.DB, t *[]*render.Task) {
 			})
 		}
 	}
+
+	return nil
+}
+
+//Updates a project in database
+func UpdateTaskInDB(db *sql.DB, rt *render.Task) error {
+	tx, err := db.Begin()
+
+	if err != nil {
+		return err
+	}
+
+	reqTask := "UPDATE projects SET state = ? WHERE project = ? AND id = ? AND frame = ?"
+	statement, err := db.Prepare(reqTask)
+
+	if err != nil {
+		tx.Rollback()
+		return nil
+	}
+	_, err = statement.Exec(rt.State, rt.Project, rt.ID, rt.Frame)
+
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func UpdateNodeInDB(db *sql.DB, nd *node.Node) error {
+	tx, err := db.Begin()
+
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	reqNode := "UPDATE compute_nodes SET state = ? WHERE name = ? AND ip = ?"
+	statement, err := db.Prepare(reqNode)
+	if err != nil {
+		return err
+	}
+
+	_, err = statement.Exec(nd.State(), nd.Name, nd.IP)
+
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
+}
+
+//Insert a list of projects in database
+func InsertProjectsInDB(db *sql.DB, it []*render.Task) error {
+	tx, err := db.Begin()
+
+	if err != nil {
+		return err
+	}
+
+	rq := "INSERT INTO projects VALUES(?,?,?,?,?,?,?,?,?)"
+	statement, err := db.Prepare(rq)
+
+	for i := 0; i < len(it); i++ {
+		statement.Exec(
+			it[i].Project,
+			it[i].ID,
+			it[i].Input,
+			it[i].Output,
+			it[i].Frame,
+			it[i].State,
+			it[i].RendererName,
+			it[i].RendererVersion,
+			it[i].StartTime)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	return tx.Commit()
 }

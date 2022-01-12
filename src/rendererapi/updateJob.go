@@ -45,7 +45,7 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	if isIn("api_key", keys) == -1 || isIn("id", keys) == -1 || isIn("frame", keys) == -1 || isIn("state", keys) == -1 || isIn("percent", keys) == -1 || isIn("mem", keys) == -1 {
 		st = "Error : Missing Parameter"
 		w.Header().Set("Content-Type", "application/json")
-		js, err := json.Marshal(returnvalue{
+		js, err := json.Marshal(ReturnValue{
 			State: st,
 		})
 
@@ -91,7 +91,7 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 
 					//Updating database and freeing node for further renders
 					t.myNode.Free()
-					t.updateDatabase(ws.Db)
+					t.UpdateDatabase(ws.Db)
 				}
 				st = "OK"
 
@@ -110,7 +110,7 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	ws.RendersMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	js, err := json.Marshal(returnvalue{
+	js, err := json.Marshal(ReturnValue{
 		State: st,
 	})
 

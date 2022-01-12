@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //UploadCompleted must be triggered by client when the upload is completed in the good folder
@@ -27,7 +29,7 @@ func (ws *WorkingSet) UploadCompleted(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := new(returnvalue)
+	resp := new(ReturnValue)
 
 	pat := filepath.Join(ws.Config.Folder, r.FormValue("id"), r.FormValue("input"))
 
@@ -46,7 +48,7 @@ func (ws *WorkingSet) UploadCompleted(w http.ResponseWriter, r *http.Request) {
 				for i := 0; i < len(ws.Uploading); i++ {
 					if ws.Uploading[i].Project == r.FormValue("project") && ws.Uploading[i].ID == r.FormValue("id") && ws.Uploading[i].State == "uploading" {
 						ws.Uploading[i].State = "waiting"
-						updateProjectinDB(ws.Db, ws.Uploading[i])
+						rendererdb.UpdateTaskInDB(ws.Db, ws.Uploading[i])
 						ws.Waiting = append(ws.Waiting, ws.Uploading[i])
 					}
 				}

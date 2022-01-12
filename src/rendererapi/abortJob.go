@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //AbortJob is handler for aborting jobs
@@ -32,7 +34,7 @@ func (ws *WorkingSet) AbortJob(w http.ResponseWriter, r *http.Request) {
 	if isIn("api_key", keys) == -1 || isIn("id", keys) == -1 {
 		st = "Error : Missing Parameter"
 		w.Header().Set("Content-Type", "application/json")
-		js, err := json.Marshal(returnvalue{
+		js, err := json.Marshal(ReturnValue{
 			State: st,
 		})
 
@@ -61,21 +63,21 @@ func (ws *WorkingSet) AbortJob(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < len(ws.Uploading); i++ {
 			if ws.Uploading[i].ID == r.FormValue("id") {
 				ws.Uploading[i].State = "abort"
-				updateProjectinDB(ws.Db, ws.Uploading[i])
+				rendererdb.UpdateTaskInDB(ws.Db, ws.Uploading[i])
 			}
 		}
 
 		for i := 0; i < len(ws.Waiting); i++ {
 			if ws.Waiting[i].ID == r.FormValue("id") {
 				ws.Waiting[i].State = "abort"
-				updateProjectinDB(ws.Db, ws.Waiting[i])
+				rendererdb.UpdateTaskInDB(ws.Db, ws.Waiting[i])
 			}
 		}
 
 		for i := 0; i < len(ws.Renders); i++ {
 			if ws.Renders[i].myTask.ID == r.FormValue("id") {
 				ws.Renders[i].myTask.State = "abort"
-				updateProjectinDB(ws.Db, ws.Renders[i].myTask)
+				rendererdb.UpdateTaskInDB(ws.Db, ws.Renders[i].myTask)
 			}
 		}
 		//Unlockign Mutexes
@@ -87,7 +89,7 @@ func (ws *WorkingSet) AbortJob(w http.ResponseWriter, r *http.Request) {
 	st = "OK"
 
 	w.Header().Set("Content-Type", "application/json")
-	js, err := json.Marshal(returnvalue{
+	js, err := json.Marshal(ReturnValue{
 		State: st,
 	})
 

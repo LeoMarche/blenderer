@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/LeoMarche/blenderer/src/render"
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //PostJob Handler for /postJob
@@ -65,7 +66,7 @@ func (ws *WorkingSet) PostJob(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ws.UploadingMutex.Lock()
 		ws.Uploading = append(ws.Uploading, it...)
-		insertProjectsInDB(ws.Db, it)
+		rendererdb.InsertProjectsInDB(ws.Db, it)
 		ws.UploadingMutex.Unlock()
 	}()
 
