@@ -83,7 +83,7 @@ func postJob(APIendpoint, APIkey, project, input, output, frameStart, frameStop,
 }
 
 //id, api_key, size and project
-func uploadCompleted(APIendpoint, APIkey, project, id, size string, client *http.Client, target interface{}) error {
+func uploadCompleted(APIendpoint, APIkey, project, id, size, input string, client *http.Client, target interface{}) error {
 	finalEndpoint := APIendpoint + "/uploadCompleted"
 
 	// Uses local self-signed cert
@@ -91,7 +91,8 @@ func uploadCompleted(APIendpoint, APIkey, project, id, size string, client *http
 		"api_key": {APIkey},
 		"project": {project},
 		"id":      {id},
-		"size":    {size}})
+		"size":    {size},
+		"input":   {input}})
 
 	if err != nil {
 		return err
@@ -104,7 +105,7 @@ func uploadCompleted(APIendpoint, APIkey, project, id, size string, client *http
 
 //id, api_key, size and project
 func getAllRenders(APIendpoint, APIkey string, client *http.Client, target interface{}) error {
-	finalEndpoint := APIendpoint + "/getAllRenders"
+	finalEndpoint := APIendpoint + "/getAllRenderTasks"
 
 	// Uses local self-signed cert
 	resp, err := client.PostForm(finalEndpoint, url.Values{
@@ -165,8 +166,10 @@ func main() {
 			id := getInput(reader)
 			fmt.Print("size : ")
 			size := getInput(reader)
+			fmt.Print("Input Name : ")
+			iName := getInput(reader)
 			rv := new(rendererapi.ReturnValue)
-			err := uploadCompleted(*URL, *apiKey, pName, id, size, client, rv)
+			err := uploadCompleted(*URL, *apiKey, pName, id, size, iName, client, rv)
 			if err != nil {
 				log.Fatal(err)
 			}
