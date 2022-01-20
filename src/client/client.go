@@ -306,8 +306,6 @@ func run(configPath string) {
 		}
 	}
 
-	fmt.Println(job.ID == "")
-
 }
 
 func main() {

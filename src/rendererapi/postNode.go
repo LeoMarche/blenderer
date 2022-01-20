@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/rendererdb"
@@ -33,9 +34,24 @@ func (ws *WorkingSet) PostNode(w http.ResponseWriter, r *http.Request) {
 	//Create Node
 	var err error
 
+	for _, n := range ws.RenderNodes {
+		if n.Name == r.FormValue("name") && n.IP == strings.Split(getIP(r), ":")[0] && n.APIKey == r.FormValue("api_key") {
+			rt := ReturnValue{"Exists"}
+
+			//Send answer
+			w.Header().Set("Content-Type", "application/json")
+			js, err := json.Marshal(rt)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Write(js)
+		}
+	}
+
 	var receivedNode node.Node
 	receivedNode.Name = r.FormValue("name")
-	receivedNode.IP = getIP(r)
+	receivedNode.IP = strings.Split(getIP(r), ":")[0]
 	receivedNode.APIKey = r.FormValue("api_key")
 	receivedNode.SetState("available")
 
@@ -46,7 +62,7 @@ func (ws *WorkingSet) PostNode(w http.ResponseWriter, r *http.Request) {
 		ws.RenderNodesMutex.Unlock()
 	}()
 
-	rt := ReturnValue{"OK"}
+	rt := ReturnValue{"Added"}
 
 	//Send answer
 	w.Header().Set("Content-Type", "application/json")
