@@ -18,7 +18,11 @@ import (
 	"time"
 
 	"github.com/LeoMarche/blenderer/src/render"
+	"github.com/LeoMarche/blenderer/src/rendererapi"
 )
+
+var nameFlag = flag.String("n", "no_name", "The name of the worker")
+var insecure = flag.Bool("i", false, "set this flag to allow insecure connections to API")
 
 type configuration struct {
 	API struct {
@@ -105,7 +109,6 @@ func SetupCloseHandler() {
 
 func getClient() *http.Client {
 
-	insecure := flag.Bool("insecure-ssl", false, "Accept/Ignore all server SSL certificates")
 	flag.Parse()
 
 	// Get the SystemCertPool, continue with an empty pool on error
@@ -147,6 +150,8 @@ func getJob(APIendpoint string, APIkey string, target interface{}, client *http.
 
 	defer resp.Body.Close()
 
+	fmt.Println(resp.Body)
+
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
@@ -172,11 +177,26 @@ func updateJob(APIendpoint, APIkey, state string, frame int, percent, mem float6
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
+func postNode(APIendpoint, APIkey, name string, target interface{}, client *http.Client) error {
+	finalEndpoint := APIendpoint + "/postNode"
+
+	resp, err := client.PostForm(finalEndpoint, url.Values{
+		"api_key": {APIkey},
+		"name":    {name}})
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
 func setAvailable(APIendpoint, APIkey string, target interface{}, client *http.Client) error {
 
 	finalEndpoint := APIendpoint + "/setAvailable"
 
-	// Uses local self-signed cert
 	resp, err := client.PostForm(finalEndpoint, url.Values{
 		"api_key": {APIkey}})
 
@@ -191,6 +211,12 @@ func setAvailable(APIendpoint, APIkey string, target interface{}, client *http.C
 
 func run(configPath string) {
 
+	flag.Parse()
+
+	if *nameFlag == "no_name" {
+		log.Fatal("You must specify a name using -n")
+	}
+
 	//Retrieving configuration
 	config, err := loadConfig(configPath)
 	if err != nil {
@@ -198,6 +224,14 @@ func run(configPath string) {
 	}
 	client := getClient()
 	job := new(render.Task)
+
+	resp := new(rendererapi.ReturnValue)
+
+	err = postNode(config.API.Endpoint, config.API.Key, *nameFlag, resp, client)
+
+	if err != nil || (resp.State != "Exists" && resp.State != "Added") {
+		log.Fatalf("Error during initialization : %e, state : %s", err, resp.State)
+	}
 
 	for !mustStop {
 		err = getJob(config.API.Endpoint, config.API.Key, job, client)
@@ -268,7 +302,7 @@ func run(configPath string) {
 			}
 
 		} else {
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 		}
 	}
 
