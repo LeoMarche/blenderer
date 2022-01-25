@@ -31,45 +31,38 @@ func (ws *WorkingSet) PostNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//Create Node
-	var err error
-
+	// Create node if not exists
 	for _, n := range ws.RenderNodes {
+		var rt ReturnValue
 		if n.Name == r.FormValue("name") && n.IP == strings.Split(getIP(r), ":")[0] && n.APIKey == r.FormValue("api_key") {
-			rt := ReturnValue{"Exists"}
+			rt = ReturnValue{"Exists"}
+			n.SetState("available")
+			rendererdb.UpdateNodeInDB(ws.Db, n)
 
-			//Send answer
-			w.Header().Set("Content-Type", "application/json")
-			js, err := json.Marshal(rt)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			w.Write(js)
+		} else {
+			var receivedNode node.Node
+			receivedNode.Name = r.FormValue("name")
+			receivedNode.IP = strings.Split(getIP(r), ":")[0]
+			receivedNode.APIKey = r.FormValue("api_key")
+			receivedNode.SetState("available")
+			rt = ReturnValue{"Added"}
+
+			go func() {
+				ws.RenderNodesMutex.Lock()
+				ws.RenderNodes = append(ws.RenderNodes, &receivedNode)
+				rendererdb.InsertNodeInDB(ws.Db, &receivedNode)
+				ws.RenderNodesMutex.Unlock()
+			}()
+
 		}
+
+		//Send answer
+		w.Header().Set("Content-Type", "application/json")
+		js, err := json.Marshal(rt)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Write(js)
 	}
-
-	var receivedNode node.Node
-	receivedNode.Name = r.FormValue("name")
-	receivedNode.IP = strings.Split(getIP(r), ":")[0]
-	receivedNode.APIKey = r.FormValue("api_key")
-	receivedNode.SetState("available")
-
-	go func() {
-		ws.RenderNodesMutex.Lock()
-		ws.RenderNodes = append(ws.RenderNodes, &receivedNode)
-		rendererdb.InsertNodeInDB(ws.Db, &receivedNode)
-		ws.RenderNodesMutex.Unlock()
-	}()
-
-	rt := ReturnValue{"Added"}
-
-	//Send answer
-	w.Header().Set("Content-Type", "application/json")
-	js, err := json.Marshal(rt)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Write(js)
 }

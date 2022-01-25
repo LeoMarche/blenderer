@@ -10,7 +10,7 @@ import (
 )
 
 //SetAvailable Handler for /setAvailable
-//The request must be a post with api_key
+//The request must be a post with api_key and name
 func (ws *WorkingSet) SetAvailable(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" || r.URL.Path != "/setAvailable" {
 		http.Error(w, "404 not found.", http.StatusNotFound)
@@ -29,7 +29,7 @@ func (ws *WorkingSet) SetAvailable(w http.ResponseWriter, r *http.Request) {
 	conf := false
 
 	for i := 0; i < len(ws.RenderNodes); i++ {
-		if ws.RenderNodes[i].IP == ip {
+		if ws.RenderNodes[i].IP == ip && ws.RenderNodes[i].Name == r.FormValue("name") {
 			n = ws.RenderNodes[i]
 			conf = true
 		}

@@ -19,31 +19,37 @@ import (
 )
 
 //Updates a slice of WorkingSet according of the expected type of the slice
-func updateWSList(li *[]*render.Task, expState string) {
+func updateWSList(li *[]*render.Task, expState string) int {
 	lr := new([]*render.Task)
 	for i := 0; i < len((*li)); i++ {
 		if (*li)[i].State == expState {
 			*lr = append(*lr, (*li)[i])
 		}
 	}
+
+	ret := len(*li) - len(*lr)
 	*li = *lr
+	return ret
 }
 
 //Updates a slice of Renders in WorkingSet
-func updateWSRendersList(li *[]*rendererapi.Render, expState string) {
+func updateWSRendersList(li *[]*rendererapi.Render, expState string) int {
 	lr := new([]*rendererapi.Render)
 	for i := 0; i < len((*li)); i++ {
 		if (*li)[i].GetState() == expState {
 			*lr = append(*lr, (*li)[i])
 		}
 	}
+
+	ret := len(*li) - len(*lr)
 	*li = *lr
+	return ret
 }
 
 //Update all the slices of the WorkingSet
 func updateWS(ws *rendererapi.WorkingSet) {
-	for true {
-		time.Sleep(1 * time.Second)
+	for {
+		time.Sleep(10 * time.Second)
 
 		//Locking Mutexes
 		ws.UploadingMutex.Lock()
@@ -52,16 +58,19 @@ func updateWS(ws *rendererapi.WorkingSet) {
 		ws.CompletedMutex.Lock()
 
 		//Processing cleaning of lists
-		updateWSList(&ws.Uploading, "uploading")
-		updateWSList(&ws.Waiting, "waiting")
-		updateWSList(&ws.Completed, "rendered")
-		updateWSRendersList(&ws.Renders, "rendering")
+		uploading := updateWSList(&ws.Uploading, "uploading")
+		waiting := updateWSList(&ws.Waiting, "waiting")
+		completed := updateWSList(&ws.Completed, "rendered")
+		rendering := updateWSRendersList(&ws.Renders, "rendering")
 
 		//Unlocking Mutexes
 		ws.CompletedMutex.Unlock()
 		ws.RendersMutex.Unlock()
 		ws.WaitingMutex.Unlock()
 		ws.UploadingMutex.Unlock()
+		fmt.Println("***")
+		fmt.Printf("Cleaning process completed, removing %d from uploads, %d from waitings, %d from completed and %d from rendering !\n", uploading, waiting, completed, rendering)
+		fmt.Printf("There is currently %d elements in uploads, %d in waiting, %d in completed and %d in rendering !\n", len(ws.Uploading), len(ws.Waiting), len(ws.Completed), len(ws.Renders))
 	}
 }
 
@@ -129,6 +138,7 @@ func handleRequests(ws *rendererapi.WorkingSet) {
 	myRouter.HandleFunc("/abortJob", ws.AbortJob)
 	myRouter.HandleFunc("/setAvailable", ws.SetAvailable)
 	myRouter.HandleFunc("/postNode", ws.PostNode)
+	myRouter.HandleFunc("/errorNode", ws.ErrorNode)
 
 	log.Fatal(http.ListenAndServeTLS(":9000", ws.Config.Certname+".cert", ws.Config.Certname+".key", myRouter))
 }

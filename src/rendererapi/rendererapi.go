@@ -57,7 +57,7 @@ func isIn(s string, t []string) int {
 	return -1
 }
 
-func isInInterface(t *[]interface{}, te interface{}) bool {
+func isInTasksList(te *render.Task, t *[]*render.Task) bool {
 	for i := 0; i < len(*t); i++ {
 		if (*t)[i] == te {
 			return true

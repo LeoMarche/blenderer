@@ -137,20 +137,21 @@ func getClient() *http.Client {
 	return &http.Client{Transport: tr}
 }
 
-func getJob(APIendpoint string, APIkey string, target interface{}, client *http.Client) error {
+func getJob(APIendpoint string, APIkey string, name string, target interface{}, client *http.Client) error {
 
 	finalEndpoint := APIendpoint + "/getJob"
 
 	// Uses local self-signed cert
-	resp, err := client.PostForm(finalEndpoint, url.Values{"api_key": {APIkey}})
+	resp, err := client.PostForm(finalEndpoint, url.Values{
+		"api_key": {APIkey},
+		"name":    {name},
+	})
 
 	if err != nil {
 		return err
 	}
 
 	defer resp.Body.Close()
-
-	fmt.Println(resp.Body)
 
 	return json.NewDecoder(resp.Body).Decode(target)
 }
@@ -209,6 +210,22 @@ func setAvailable(APIendpoint, APIkey string, target interface{}, client *http.C
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
+func errorNode(APIendpoint, APIkey, name string, target interface{}, client *http.Client) error {
+	finalEndpoint := APIendpoint + "/errorNode"
+
+	resp, err := client.PostForm(finalEndpoint, url.Values{
+		"api_key": {APIkey},
+		"name":    {name}})
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
 func run(configPath string) {
 
 	flag.Parse()
@@ -234,14 +251,13 @@ func run(configPath string) {
 	}
 
 	for !mustStop {
-		err = getJob(config.API.Endpoint, config.API.Key, job, client)
+		err = getJob(config.API.Endpoint, config.API.Key, *nameFlag, job, client)
 
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		if job.ID != "" {
-			fmt.Println(job)
 
 			//Adapt the render.Task to fit reality
 			outputFolder := filepath.Join(config.Folder, job.ID)
@@ -254,6 +270,15 @@ func run(configPath string) {
 
 			if rT != nil {
 				pr, err := rT.LaunchRender()
+
+				go func() {
+					err := pr.Wait()
+					var rt rendererapi.ReturnValue
+					if err != nil {
+						errorNode(config.API.Endpoint, config.API.Key, *nameFlag, rt, client)
+						log.Fatalf("Error during rendering : %e", err)
+					}
+				}()
 
 				if err != nil {
 					log.Fatal(err)

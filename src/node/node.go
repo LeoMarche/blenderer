@@ -40,7 +40,7 @@ func (n *Node) Commission() bool {
 
 //SetState can be used to st the state of a Node to an accepted value
 func (n *Node) SetState(state string) bool {
-	acceptedStates := []string{"available", "rendering", "down"}
+	acceptedStates := []string{"available", "rendering", "down", "error"}
 	if utils.IsIn(state, acceptedStates) >= 0 {
 		n.state = state
 		return true

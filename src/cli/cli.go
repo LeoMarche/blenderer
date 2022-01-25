@@ -19,9 +19,9 @@ import (
 	"github.com/LeoMarche/blenderer/src/rendererapi"
 )
 
-var certPath = flag.String("c", "host.cert", "Path to the SSL cert for connecting to the api")
-var apiKey = flag.String("k", "unsecure_sample", "API key to use to connect to the API")
-var URL = flag.String("u", "localhost:9000", "URL to use to connect to the API")
+var certPath = flag.String("c", "../host.cert", "Path to the SSL cert for connecting to the api")
+var apiKey = flag.String("k", "sample_unsecure", "API key to use to connect to the API")
+var URL = flag.String("u", "https://localhost:9000", "URL to use to connect to the API")
 var insecure = flag.Bool("i", false, "set this flag to allow insecure connections to API")
 
 func initialize() *http.Client {
