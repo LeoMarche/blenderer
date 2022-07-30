@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/render"
@@ -30,11 +31,12 @@ func (ws *WorkingSet) GetJob(w http.ResponseWriter, r *http.Request) {
 
 	authorized := false
 
-	for i := 0; i < len(ws.RenderNodes); i++ {
-		if ws.RenderNodes[i].IP == ip && ws.RenderNodes[i].Name == r.FormValue("name") {
-			n = ws.RenderNodes[i]
-			authorized = true
-		}
+	tmp_n, ok := ws.RenderNodes.Load(r.FormValue("name") + "//" + ip)
+	if ok {
+		n = tmp_n.(*node.Node)
+		authorized = true
+	} else {
+		return
 	}
 
 	if !authorized {
@@ -48,32 +50,73 @@ func (ws *WorkingSet) GetJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t := new(render.Task)
-	ws.WaitingMutex.Lock()
-	for i := 0; i < len(ws.Waiting); i++ {
-		if ws.Waiting[i].State == "waiting" {
-			t = ws.Waiting[i]
-			t.State = "rendering"
-			r := n.Commission()
-			if r {
+	candidates := make(map[interface{}][]interface{})
 
-				//Creating new render
-				rd := Render{
-					myTask: t,
-					myNode: n,
+	ws.Tasks.Range(func(key, value interface{}) bool {
+		value.(*sync.Map).Range(func(key2, value2 interface{}) bool {
+			if value2.(*render.Task).State == "waiting" {
+
+				//Add the keys to the candidates
+				if val, ok := candidates[key]; ok {
+					candidates[key] = append(val, key2)
+				} else {
+					candidates[key] = []interface{}{key2}
 				}
-
-				//Pushing it in Renders
-				ws.RendersMutex.Lock()
-				ws.Renders = append(ws.Renders, &rd)
-				ws.RendersMutex.Unlock()
-
-				rd.UpdateDatabase(ws.Db)
 			}
+			return true
+		})
+		return true
+	})
+
+	t := new(render.Task)
+	found := false
+	for taskID, frameList := range candidates {
+
+		//Load the Map containing the different tasks associated with frames
+		tmpMap, ok := ws.Tasks.Load(taskID)
+		if ok {
+
+			//For each frame in candidates frames
+			for _, fr := range frameList {
+
+				//Load the corresponding task
+				tsk, ok := tmpMap.(*sync.Map).Load(fr)
+				if ok {
+					valid := false
+					var rd *Render
+
+					tsk.(*render.Task).Lock()
+
+					//Check if task can be comissionned
+					if tsk.(*render.Task).State == "waiting" {
+						t = tsk.(*render.Task)
+						r := n.Commission()
+						if r {
+							tsk.(*render.Task).State = "rendering"
+							rd = &Render{
+								myTask: tsk.(*render.Task),
+								myNode: n,
+							}
+							valid = true
+						}
+					}
+					tsk.(*render.Task).Unlock()
+
+					//If task commissionable, comission it and stop searching
+					if valid {
+						newMap := new(sync.Map)
+						tmpMap, _ := ws.Renders.LoadOrStore(rd.myTask.ID, newMap)
+						tmpMap.(*sync.Map).Store(rd.myTask.Frame, rd)
+						found = true
+						break
+					}
+				}
+			}
+		}
+		if found {
 			break
 		}
 	}
-	ws.WaitingMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	js, err := json.Marshal(*t)

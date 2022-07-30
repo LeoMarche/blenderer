@@ -14,12 +14,6 @@ import (
 //The request must be a post with api_key and name
 func (ws *WorkingSet) PostNode(w http.ResponseWriter, r *http.Request) {
 
-	//Verify requests parameters
-	if r.Method != "POST" || r.URL.Path != "/postNode" {
-		http.Error(w, "404 not found.", http.StatusNotFound)
-		return
-	}
-
 	if err := r.ParseForm(); err != nil {
 		fmt.Fprintf(w, "ParseForm() err: %v", err)
 		return
@@ -31,38 +25,37 @@ func (ws *WorkingSet) PostNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create node if not exists
-	for _, n := range ws.RenderNodes {
-		var rt ReturnValue
-		if n.Name == r.FormValue("name") && n.IP == strings.Split(getIP(r), ":")[0] && n.APIKey == r.FormValue("api_key") {
-			rt = ReturnValue{"Exists"}
-			n.SetState("available")
-			rendererdb.UpdateNodeInDB(ws.Db, n)
+	var receivedNode *node.Node
+	receivedNode.Name = r.FormValue("name")
+	receivedNode.IP = strings.Split(getIP(r), ":")[0]
+	receivedNode.APIKey = r.FormValue("api_key")
+	receivedNode.SetState("available")
 
-		} else {
-			var receivedNode node.Node
-			receivedNode.Name = r.FormValue("name")
-			receivedNode.IP = strings.Split(getIP(r), ":")[0]
-			receivedNode.APIKey = r.FormValue("api_key")
-			receivedNode.SetState("available")
-			rt = ReturnValue{"Added"}
+	var rt ReturnValue
 
-			go func() {
-				ws.RenderNodesMutex.Lock()
-				ws.RenderNodes = append(ws.RenderNodes, &receivedNode)
-				rendererdb.InsertNodeInDB(ws.Db, &receivedNode)
-				ws.RenderNodesMutex.Unlock()
-			}()
-
-		}
-
-		//Send answer
-		w.Header().Set("Content-Type", "application/json")
-		js, err := json.Marshal(rt)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Write(js)
+	//Create node if not exists
+	n, loaded := ws.RenderNodes.LoadOrStore(receivedNode.Name+"//"+receivedNode.IP, receivedNode)
+	if loaded {
+		rt = ReturnValue{"Exists"}
+		n.(*node.Node).SetState("available")
+		ws.DBTransacts.Add(rendererdb.DBTransact{
+			OP:       rendererdb.UPDATENODE,
+			Argument: n.(*node.Node),
+		})
+	} else {
+		rt = ReturnValue{"Added"}
+		ws.DBTransacts.Add(rendererdb.DBTransact{
+			OP:       rendererdb.INSERTNODE,
+			Argument: n.(*node.Node),
+		})
 	}
+
+	//Send answer
+	w.Header().Set("Content-Type", "application/json")
+	js, err := json.Marshal(rt)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write(js)
 }

@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/LeoMarche/blenderer/src/node"
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //UpdateJob is handler for updating jobs
@@ -25,12 +27,27 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 
 	//Determine which node is asking for a job
 	ip := strings.Split(getIP(r), ":")[0]
+
+	st := "Error"
 	var n *node.Node
 
-	for i := 0; i < len(ws.RenderNodes); i++ {
-		if (ws.RenderNodes)[i].IP == ip {
-			n = ws.RenderNodes[i]
+	tmp_n, ok := ws.RenderNodes.Load(r.FormValue("name") + "//" + ip)
+	if ok {
+		n = tmp_n.(*node.Node)
+	} else {
+		st = "Error : Missing parameter 'name'"
+		w.Header().Set("Content-Type", "application/json")
+		js, err := json.Marshal(ReturnValue{
+			State: st,
+		})
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+
+		w.Write(js)
+		return
 	}
 
 	keys := []string{}
@@ -38,8 +55,6 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	for k := range r.Form {
 		keys = append(keys, k)
 	}
-
-	st := "Error"
 
 	//When parameters are missing
 	if isIn("api_key", keys) == -1 || isIn("id", keys) == -1 || isIn("frame", keys) == -1 || isIn("state", keys) == -1 || isIn("percent", keys) == -1 || isIn("mem", keys) == -1 {
@@ -68,55 +83,67 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 
 	var t *Render
 
-	//Locking Mutexs to update renders
-	ws.RendersMutex.Lock()
-
 	st = "Error : No matching Renders"
+	tmpMap, ok := ws.Renders.Load(r.FormValue("id"))
+	if ok {
+		rdr, ok := tmpMap.(*sync.Map).Load(fr)
+		if ok {
+			switch rst := rdr.(*Render).myTask.State; rst {
 
-	for i := 0; i < len(ws.Renders); i++ {
-		if ws.Renders[i].myTask.ID == r.FormValue("id") && ws.Renders[i].myTask.Frame == fr {
-			switch rst := ws.Renders[i].myTask.State; rst {
 			//Normal frame
 			case "rendering":
-				t = ws.Renders[i]
+
+				//Update render stats
+				t = rdr.(*Render)
+				t.myTask.Lock()
 				t.myTask.State = r.FormValue("state")
 				t.Percent = r.FormValue("percent")
 				t.Mem = r.FormValue("mem")
-				if t.myTask.State == "rendered" {
+				t.myTask.Unlock()
 
-					//Locking mutex to ass task to completed tasks
-					ws.CompletedMutex.Lock()
-					ws.Completed = append(ws.Completed, t.myTask)
-					ws.CompletedMutex.Unlock()
+				//Handle the case 'frame rendered'
+				if t.myTask.State == "rendered" {
 
 					//Updating database and freeing node for further renders
 					t.myNode.Free()
-					t.UpdateDatabase(ws.Db)
+					ws.DBTransacts.Add(rendererdb.DBTransact{
+						OP:       rendererdb.UPDATENODE,
+						Argument: t.myNode,
+					})
+
+					//Removing task from Renders and updating database
+					tmpMap.(*sync.Map).Delete(fr)
+					ws.DBTransacts.Add(rendererdb.DBTransact{
+						OP:       rendererdb.UPDATETASK,
+						Argument: t.myTask,
+					})
 				}
 				st = "OK"
 
 			//Aborted frame
 			case "abort":
+
+				//Notify worker
 				st = "ABORT"
+
+				//Delete job from on progress renders
+				tmpMap.(*sync.Map).Delete(fr)
 
 			//Default
 			default:
 				st = "The frame is like " + rst
 			}
 		}
+
+		w.Header().Set("Content-Type", "application/json")
+		js, err := json.Marshal(ReturnValue{
+			State: st,
+		})
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Write(js)
 	}
-
-	//Unlocking mutex
-	ws.RendersMutex.Unlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	js, err := json.Marshal(ReturnValue{
-		State: st,
-	})
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Write(js)
 }

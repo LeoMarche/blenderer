@@ -42,7 +42,9 @@ func (n *Node) Commission() bool {
 func (n *Node) SetState(state string) bool {
 	acceptedStates := []string{"available", "rendering", "down", "error"}
 	if utils.IsIn(state, acceptedStates) >= 0 {
+		n.Lock()
 		n.state = state
+		n.Unlock()
 		return true
 	}
 

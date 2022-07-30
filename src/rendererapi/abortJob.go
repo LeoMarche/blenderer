@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 
-	"github.com/LeoMarche/blenderer/src/rendererdb"
+	"github.com/LeoMarche/blenderer/src/render"
 )
 
 //AbortJob is handler for aborting jobs
@@ -53,40 +54,22 @@ func (ws *WorkingSet) AbortJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go func() {
-		//Locking Mutexes
-		ws.UploadingMutex.Lock()
-		ws.WaitingMutex.Lock()
-		ws.RendersMutex.Lock()
+	//Retrieving whole jobs with given id
+	tmpMap, ok := ws.Tasks.Load(r.FormValue("id"))
+	if ok {
 
-		//Aborting all the frames
-		for i := 0; i < len(ws.Uploading); i++ {
-			if ws.Uploading[i].ID == r.FormValue("id") {
-				ws.Uploading[i].State = "abort"
-				rendererdb.UpdateTaskInDB(ws.Db, ws.Uploading[i])
-			}
-		}
+		// Putting all job in state abort
+		tmpMap.(*sync.Map).Range(func(key, value interface{}) bool {
+			value.(*render.Task).SetState("abort")
+			return true
+		})
+		st = "OK"
+	} else {
+		st = "error: can't find job"
+	}
 
-		for i := 0; i < len(ws.Waiting); i++ {
-			if ws.Waiting[i].ID == r.FormValue("id") {
-				ws.Waiting[i].State = "abort"
-				rendererdb.UpdateTaskInDB(ws.Db, ws.Waiting[i])
-			}
-		}
-
-		for i := 0; i < len(ws.Renders); i++ {
-			if ws.Renders[i].myTask.ID == r.FormValue("id") {
-				ws.Renders[i].myTask.State = "abort"
-				rendererdb.UpdateTaskInDB(ws.Db, ws.Renders[i].myTask)
-			}
-		}
-		//Unlockign Mutexes
-		ws.RendersMutex.Unlock()
-		ws.WaitingMutex.Unlock()
-		ws.UploadingMutex.Unlock()
-	}()
-
-	st = "OK"
+	//Optionnaly remove the jobs that are being rendered
+	ws.Renders.Delete(r.FormValue(("id")))
 
 	w.Header().Set("Content-Type", "application/json")
 	js, err := json.Marshal(ReturnValue{

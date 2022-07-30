@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/LeoMarche/blenderer/src/render"
@@ -61,14 +62,19 @@ func (ws *WorkingSet) PostJob(w http.ResponseWriter, r *http.Request) {
 	receivedTask.State = "uploading"
 	receivedTask.StartTime = r.FormValue("startTime")
 
+	//Get individual tasks and put it into hashmap
 	it := receivedTask.GetIndividualTasks()
+	newMap := new(sync.Map)
+	tmpMap, _ := ws.Tasks.LoadOrStore(receivedTask.ID, newMap)
+	for _, r := range it {
+		tmpMap.(*sync.Map).Store(r.Frame, r)
+	}
 
-	go func() {
-		ws.UploadingMutex.Lock()
-		ws.Uploading = append(ws.Uploading, it...)
-		rendererdb.InsertProjectsInDB(ws.Db, it)
-		ws.UploadingMutex.Unlock()
-	}()
+	//Put tasks into DB
+	ws.DBTransacts.Add(&rendererdb.DBTransact{
+		OP:       rendererdb.INSERTPROJECT,
+		Argument: it,
+	})
 
 	up := Upload{Project: receivedTask.Project, Token: receivedTask.ID, State: "ready"}
 

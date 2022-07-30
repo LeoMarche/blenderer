@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/LeoMarche/blenderer/src/node"
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //SetAvailable Handler for /setAvailable
@@ -28,11 +29,10 @@ func (ws *WorkingSet) SetAvailable(w http.ResponseWriter, r *http.Request) {
 	var n *node.Node
 	conf := false
 
-	for i := 0; i < len(ws.RenderNodes); i++ {
-		if ws.RenderNodes[i].IP == ip && ws.RenderNodes[i].Name == r.FormValue("name") {
-			n = ws.RenderNodes[i]
-			conf = true
-		}
+	tmpNode, ok := ws.RenderNodes.Load(r.FormValue("name") + "//" + ip)
+	if ok {
+		n = tmpNode.(*node.Node)
+		conf = true
 	}
 
 	if !conf {
@@ -47,6 +47,10 @@ func (ws *WorkingSet) SetAvailable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	n.Free()
+	ws.DBTransacts.Add(rendererdb.DBTransact{
+		OP:       rendererdb.UPDATENODE,
+		Argument: n,
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	js, err := json.Marshal(ReturnValue{"OK"})

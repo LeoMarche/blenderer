@@ -5,19 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-
-	"github.com/LeoMarche/blenderer/src/rendererdb"
+	"sync"
 )
 
-//PostJob Handler for /postNode
-//The request must be a post with api_key and name
+//ErrorNode handler for /errorNode
 func (ws *WorkingSet) ErrorNode(w http.ResponseWriter, r *http.Request) {
-
-	//Verify requests parameters
-	if r.Method != "POST" || r.URL.Path != "/errorNode" {
-		http.Error(w, "404 not found.", http.StatusNotFound)
-		return
-	}
 
 	if err := r.ParseForm(); err != nil {
 		fmt.Fprintf(w, "ParseForm() err: %v", err)
@@ -30,23 +22,40 @@ func (ws *WorkingSet) ErrorNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create node if not exists
-	for _, re := range ws.Renders {
-		if re.myNode.IP == strings.Split(getIP(r), ":")[0] && re.myNode.Name == r.FormValue("name") {
-			re.myNode.Lock()
-			re.myNode.SetState("error")
-			re.myNode.Unlock()
-			go rendererdb.UpdateNodeInDB(ws.Db, re.myNode)
+	// Set Node in error and put back the task in waiting state
+	rendersToDelete := make(map[interface{}][]interface{})
+	ws.Renders.Range(func(key, value interface{}) bool {
+		value.(*sync.Map).Range(func(key2, value2 interface{}) bool {
+			if value2.(*Render).myNode.IP == strings.Split(getIP(r), ":")[0] && value2.(*Render).myNode.Name == r.FormValue("name") {
 
-			ws.WaitingMutex.Lock()
-			re.myTask.State = "waiting"
-			if !isInTasksList(re.myTask, &ws.Waiting) {
-				ws.Waiting = append(ws.Waiting, re.myTask)
+				//Set the state of the node to error
+				value2.(*Render).myNode.SetState("error")
+
+				//Add the keys to the rendersToDeletes
+				if val, ok := rendersToDelete[key]; ok {
+					rendersToDelete[key] = append(val, key2)
+				} else {
+					rendersToDelete[key] = []interface{}{key2}
+				}
 			}
-			ws.WaitingMutex.Unlock()
-			go rendererdb.UpdateTaskInDB(ws.Db, re.myTask)
+			return true
+		})
+		return true
+	})
 
-			break
+	// Delete concerned renders from the render list
+	for key, value := range rendersToDelete {
+		m, ok := ws.Renders.Load(key)
+		if ok {
+			for _, key2 := range value {
+				deletedRT, ok := m.(*sync.Map).Load(key2)
+				m.(*sync.Map).Delete(key2)
+				if ok {
+
+					//Set the state of the renders the node was doing
+					deletedRT.(*Render).myTask.SetState("waiting")
+				}
+			}
 		}
 	}
 

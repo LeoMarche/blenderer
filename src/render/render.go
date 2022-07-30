@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"sync"
 )
 
 //Task is the base descriptor of a Render Task
@@ -20,6 +21,7 @@ type Task struct {
 	RendererName    string `json:"rendererName"`
 	RendererVersion string `json:"rendererVersion"`
 	StartTime       string `json:"startTime"`
+	sync.Mutex
 }
 
 //VideoTask is the base descriptor for a Video Render Task
@@ -81,6 +83,12 @@ func (t *Task) MatchRenderer(rTable []Renderer) *RendererTask {
 	return nil
 }
 
+func (t *Task) SetState(state string) {
+	t.Lock()
+	t.State = state
+	t.Unlock()
+}
+
 //LaunchRender launches the render on the renderer
 func (rt *RendererTask) LaunchRender() (*exec.Cmd, error) {
 	if rt.Renderer.Name == "blender" {
@@ -89,7 +97,7 @@ func (rt *RendererTask) LaunchRender() (*exec.Cmd, error) {
 		a := cmd.Start()
 		return cmd, a
 	}
-	return nil, errors.New("No matching renderer")
+	return nil, errors.New("no matching renderer")
 }
 
 //CheckRender check the state of the render and returns state, percentage, memory use of the render

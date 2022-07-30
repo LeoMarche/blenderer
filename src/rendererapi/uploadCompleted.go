@@ -7,8 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 
-	"github.com/LeoMarche/blenderer/src/rendererdb"
+	"github.com/LeoMarche/blenderer/src/render"
 )
 
 //UploadCompleted must be triggered by client when the upload is completed in the good folder
@@ -43,22 +44,13 @@ func (ws *WorkingSet) UploadCompleted(w http.ResponseWriter, r *http.Request) {
 		if st.Size() == int64(expSize) {
 
 			resp.State = "Completed"
-
-			go func() {
-				//We lock mutexes and displace from Uploading to Waiting Queue
-				ws.UploadingMutex.Lock()
-				ws.WaitingMutex.Lock()
-
-				for i := 0; i < len(ws.Uploading); i++ {
-					if ws.Uploading[i].Project == r.FormValue("project") && ws.Uploading[i].ID == r.FormValue("id") && ws.Uploading[i].State == "uploading" {
-						ws.Uploading[i].State = "waiting"
-						rendererdb.UpdateTaskInDB(ws.Db, ws.Uploading[i])
-						ws.Waiting = append(ws.Waiting, ws.Uploading[i])
-					}
-				}
-				ws.WaitingMutex.Unlock()
-				ws.UploadingMutex.Unlock()
-			}()
+			tmpMap, ok := ws.Tasks.Load(r.FormValue("id"))
+			if ok {
+				tmpMap.(*sync.Map).Range(func(k, v interface{}) bool {
+					v.(*render.Task).SetState("waiting")
+					return true
+				})
+			}
 		} else {
 			resp.State = "Uploading"
 		}

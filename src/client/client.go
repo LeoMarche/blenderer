@@ -156,7 +156,7 @@ func getJob(APIendpoint string, APIkey string, name string, target interface{}, 
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-func updateJob(APIendpoint, APIkey, state string, frame int, percent, mem float64, id string, target interface{}, client *http.Client) error {
+func updateJob(APIendpoint, APIkey, state, name string, frame int, percent, mem float64, id string, target interface{}, client *http.Client) error {
 
 	finalEndpoint := APIendpoint + "/updateJob"
 
@@ -165,6 +165,7 @@ func updateJob(APIendpoint, APIkey, state string, frame int, percent, mem float6
 		"api_key": {APIkey},
 		"id":      {id},
 		"state":   {state},
+		"name":    {name},
 		"frame":   {strconv.Itoa(frame)},
 		"percent": {strconv.FormatFloat(percent, 'f', -1, 64)},
 		"mem":     {strconv.FormatFloat(mem, 'f', -1, 64)}})
@@ -297,7 +298,7 @@ func run(configPath string) {
 
 				for state != "rendered" {
 					s := new(returnvalue)
-					rv := updateJob(config.API.Endpoint, config.API.Key, state, rT.Task.Frame, percent, mem, rT.Task.ID, s, client)
+					rv := updateJob(config.API.Endpoint, config.API.Key, state, *nameFlag, rT.Task.Frame, percent, mem, rT.Task.ID, s, client)
 					if rv != nil || s.State != "OK" {
 
 						//If aborting render
@@ -317,7 +318,7 @@ func run(configPath string) {
 
 				state, percent, mem = rT.CheckRender()
 				s := new(returnvalue)
-				rv := updateJob(config.API.Endpoint, config.API.Key, state, rT.Task.Frame, percent, mem, rT.Task.ID, s, client)
+				rv := updateJob(config.API.Endpoint, config.API.Key, state, *nameFlag, rT.Task.Frame, percent, mem, rT.Task.ID, s, client)
 				if rv != nil || s.State != "OK" {
 					if err := pr.Process.Kill(); err != nil {
 						log.Fatal("failed to kill process: ", err)

@@ -2,12 +2,27 @@ package rendererdb
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/render"
+	fifo "github.com/foize/go.fifo"
 )
+
+const (
+	UPDATETASK    int = 0
+	INSERTPROJECT int = 1
+	UPDATENODE    int = 2
+	INSERTNODE    int = 3
+)
+
+type DBTransact struct {
+	OP       int
+	Argument interface{}
+}
 
 //Creates the two needed tables in sql database
 func createTable(db *sql.DB) {
@@ -74,7 +89,7 @@ func LoadDatabase(dbName string) (*sql.DB, error) {
 }
 
 //LoadNodeFromDB loads nodes from a sqlite database
-func LoadNodeFromDB(db *sql.DB, t *[]*node.Node) error {
+func LoadNodeFromDB(db *sql.DB, t *sync.Map) error {
 	row, err := db.Query("SELECT * FROM compute_nodes")
 
 	if err != nil {
@@ -92,18 +107,24 @@ func LoadNodeFromDB(db *sql.DB, t *[]*node.Node) error {
 			return err
 		}
 
-		*t = append(*t, &node.Node{
+		t.Store(na+"//"+ip, &node.Node{
 			Name:   na,
 			IP:     ip,
 			APIKey: apiKey,
 		})
-		(*t)[len(*t)-1].SetState(st)
+
+		newnode, ok := t.Load(na + "//" + ip)
+		if !ok {
+			return fmt.Errorf("couldn't load node %s with IP %s", na, ip)
+		}
+
+		newnode.(*node.Node).SetState(st)
 	}
 	return nil
 }
 
 //LoadTasksFromDB loads tasks from sqlite db
-func LoadTasksFromDB(db *sql.DB, t *[]*render.Task) error {
+func LoadTasksFromDB(db *sql.DB, t *sync.Map) error {
 	row, err := db.Query("SELECT * FROM projects")
 
 	if err != nil {
@@ -124,7 +145,12 @@ func LoadTasksFromDB(db *sql.DB, t *[]*render.Task) error {
 		}
 
 		if st != "failed" && st != "completed" {
-			*t = append(*t, &render.Task{
+			newMap := new(sync.Map)
+			tmpMap, _ := t.LoadOrStore(id, newMap)
+			if st == "rendering" {
+				st = "waiting"
+			}
+			tmpMap.(*sync.Map).Store(fr, &render.Task{
 				Project:         pr,
 				ID:              id,
 				Input:           in,
@@ -137,7 +163,6 @@ func LoadTasksFromDB(db *sql.DB, t *[]*render.Task) error {
 			})
 		}
 	}
-
 	return nil
 }
 
@@ -247,4 +272,42 @@ func InsertNodeInDB(db *sql.DB, n *node.Node) error {
 	}
 
 	return tx.Commit()
+}
+
+func DBTransactRoutines(db *sql.DB, transacts *fifo.Queue, stopDB *bool) {
+
+	for !(*stopDB) {
+		t := transacts.Next()
+		for t != nil {
+			OP := t.(DBTransact).OP
+			arg := t.(DBTransact).Argument
+
+			switch OP {
+			case 0:
+				err := UpdateTaskInDB(db, arg.(*render.Task))
+				if err != nil {
+					fmt.Println("Error when trying to update Task in DB")
+				}
+			case 1:
+				err := InsertProjectsInDB(db, arg.([]*render.Task))
+				if err != nil {
+					fmt.Println("Error when trying to insert Project in DB")
+				}
+			case 2:
+				err := UpdateNodeInDB(db, arg.(*node.Node))
+				if err != nil {
+					fmt.Println("Error when trying to update Node in DB")
+				}
+			case 3:
+				err := InsertNodeInDB(db, arg.(*node.Node))
+				if err != nil {
+					fmt.Println("Error when trying to insert Node in DB")
+				}
+			}
+
+			t = transacts.Next()
+		}
+	}
+
+	fmt.Println("DBTransactRoutine received stopping signal, exiting now !")
 }

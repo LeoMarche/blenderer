@@ -8,22 +8,18 @@ import (
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/render"
 	"github.com/LeoMarche/blenderer/src/rendererdb"
+	fifo "github.com/foize/go.fifo"
 )
 
 //WorkingSet contains variables for main to work
 type WorkingSet struct {
-	Db               *sql.DB
-	Uploading        []*render.Task
-	Waiting          []*render.Task
-	Completed        []*render.Task
-	RenderNodes      []*node.Node
-	Renders          []*Render
-	Config           Configuration
-	UploadingMutex   sync.Mutex
-	WaitingMutex     sync.Mutex
-	CompletedMutex   sync.Mutex
-	RendersMutex     sync.Mutex
-	RenderNodesMutex sync.Mutex
+	Db          *sql.DB
+	Tasks       *sync.Map //Index for this map is ID. It contains map with task, indexes are Frame
+	RenderNodes *sync.Map //Index for this map is Name+"//"+IP
+	Renders     *sync.Map //Index for this map is ID. It contains maps with Render, indexes are Frame
+	Config      Configuration
+	DBTransacts *fifo.Queue
+	StopDB      *bool
 }
 
 type ReturnValue struct {
@@ -55,16 +51,6 @@ func isIn(s string, t []string) int {
 	}
 
 	return -1
-}
-
-func isInTasksList(te *render.Task, t *[]*render.Task) bool {
-	for i := 0; i < len(*t); i++ {
-		if (*t)[i] == te {
-			return true
-		}
-	}
-
-	return false
 }
 
 //Configuration is the main configuration

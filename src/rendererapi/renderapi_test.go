@@ -11,10 +11,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/render"
+	fifo "github.com/foize/go.fifo"
 
 	"github.com/LeoMarche/blenderer/src/rendererdb"
 
@@ -35,7 +37,6 @@ func copy(src, dst string) (int64, error) {
 	}
 
 	source, err := os.Open(src)
-	fmt.Println(src)
 	if err != nil {
 		return 0, err
 	}
@@ -87,6 +88,7 @@ func TestUpdateJob(t *testing.T) {
 	dataTab[0].Set("state", "rendering")
 	dataTab[0].Set("percent", "1.0")
 	dataTab[0].Set("mem", "2.0")
+	dataTab[0].Set("name", "localhost")
 
 	dataTab[1].Set("api_key", "test_api")
 	dataTab[1].Set("id", "test_api")
@@ -94,6 +96,7 @@ func TestUpdateJob(t *testing.T) {
 	dataTab[1].Set("state", "rendering")
 	dataTab[1].Set("percent", "10.0")
 	dataTab[1].Set("mem", "10.0")
+	dataTab[1].Set("name", "localhost")
 
 	dataTab[2].Set("api_key", "test_api")
 	dataTab[2].Set("id", "test_api")
@@ -101,6 +104,7 @@ func TestUpdateJob(t *testing.T) {
 	dataTab[2].Set("state", "rendered")
 	dataTab[2].Set("percent", "100.0")
 	dataTab[2].Set("mem", "0.0")
+	dataTab[2].Set("name", "localhost")
 
 	dataTab[3].Set("api_key", "test_api")
 	dataTab[3].Set("id", "test_api")
@@ -108,12 +112,14 @@ func TestUpdateJob(t *testing.T) {
 	dataTab[3].Set("state", "rendered")
 	dataTab[3].Set("percent", "100.0")
 	dataTab[3].Set("mem", "0.0")
+	dataTab[3].Set("name", "localhost")
 
 	dataTab[4].Set("api_key", "test_api")
 	dataTab[4].Set("frame", "127")
 	dataTab[4].Set("state", "rendered")
 	dataTab[4].Set("percent", "100.0")
 	dataTab[4].Set("mem", "0.0")
+	dataTab[4].Set("name", "localhost")
 
 	//Creating ws for handling
 	cg := Configuration{
@@ -125,14 +131,14 @@ func TestUpdateJob(t *testing.T) {
 
 	db, _ := rendererdb.LoadDatabase(cg.DBName)
 
-	nd := node.Node{
+	nd := &node.Node{
 		Name:   "localhost",
 		IP:     "127.0.0.1",
 		APIKey: "test_api",
 	}
 	nd.SetState("rendering")
 
-	tas := render.Task{
+	tas := &render.Task{
 		Project:         "cube",
 		ID:              "test_api",
 		Input:           "cube.blend",
@@ -143,25 +149,34 @@ func TestUpdateJob(t *testing.T) {
 		RendererVersion: "2.91.0",
 	}
 
-	rd := Render{
-		myTask:  &tas,
-		myNode:  &nd,
+	rd := &Render{
+		myTask:  tas,
+		myNode:  nd,
 		Percent: "0.0",
 		Mem:     "0.0",
 	}
 
-	rd1 := rd
-	rd1.Percent = "1.0"
-	rd1.Mem = "2.0"
+	nodesT := new(sync.Map)
+	nodesT.Store(nd.Name+"//"+nd.IP, nd)
 
+	rendersT := new(sync.Map)
+	newMap := new(sync.Map)
+	tmpMap, _ := rendersT.LoadOrStore(tas.ID, newMap)
+	tmpMap.(*sync.Map).Store(tas.Frame, rd)
+
+	tasksT := new(sync.Map)
+	newMap2 := new(sync.Map)
+	tmpMap2, _ := tasksT.LoadOrStore(tas.ID, newMap2)
+	tmpMap2.(*sync.Map).Store(tas.Frame, tas)
+
+	DBT := fifo.NewQueue()
 	ws := WorkingSet{
 		Db:          db,
 		Config:      cg,
-		RenderNodes: []*node.Node{&nd},
-		Renders:     []*Render{&rd},
-		Uploading:   []*render.Task{},
-		Waiting:     []*render.Task{},
-		Completed:   []*render.Task{},
+		RenderNodes: nodesT,
+		Renders:     rendersT,
+		Tasks:       tasksT,
+		DBTransacts: DBT,
 	}
 
 	expectedMem := []string{"2.0", "2.0", "0.0", "0.0", "0.0"}
@@ -193,17 +208,13 @@ func TestUpdateJob(t *testing.T) {
 		json.Unmarshal(body, dt)
 
 		//Asserts
+		fmt.Println(dt)
 		assert.Equal("application/json", resp.Header.Get("Content-Type"), "Bad header in test %d", i)
-		assert.Equal(expectedMem[i], ws.Renders[0].Mem, "Bad value for memory in test %d", i)
-		assert.Equal(expectedPercent[i], ws.Renders[0].Percent, "Bad value for percents in test %d", i)
+		assert.Equal(expectedMem[i], rd.Mem, "Bad value for memory in test %d", i)
+		assert.Equal(expectedPercent[i], rd.Percent, "Bad value for percents in test %d", i)
 		assert.Equal(expectedReturn[i], *dt, "Bad result returned in test %d", i)
-		assert.Equal(expectedState[i], ws.Renders[0].myTask.State)
-		assert.Equal(expectedNodeState[i], ws.Renders[0].myNode.State())
-
-		if len(ws.Completed) > 0 {
-			assert.Equal(1, len(ws.Completed), "Added too much element in completed : %d elements in test %d", len(ws.Completed), i)
-			assert.Equal(ws.Completed[0], ws.Renders[0].myTask)
-		}
+		assert.Equal(expectedState[i], rd.myTask.State)
+		assert.Equal(expectedNodeState[i], rd.myNode.State())
 	}
 
 	os.RemoveAll("../../testdata/rendererapi_tests/updateJob")
@@ -220,6 +231,7 @@ func TestGetJob(t *testing.T) {
 
 	//Creating request and recorder
 	dataTab[0].Set("api_key", "test_api")
+	dataTab[0].Set("name", "localhost")
 
 	//Creating ws for handling
 	cg := Configuration{
@@ -231,14 +243,14 @@ func TestGetJob(t *testing.T) {
 
 	db, _ := rendererdb.LoadDatabase(cg.DBName)
 
-	nd := node.Node{
+	nd := &node.Node{
 		Name:   "localhost",
 		IP:     "127.0.0.1",
 		APIKey: "test_api",
 	}
 	nd.SetState("available")
 
-	tas := render.Task{
+	tas := &render.Task{
 		Project:         "cube",
 		ID:              "test_api",
 		Input:           "cube.blend",
@@ -249,28 +261,29 @@ func TestGetJob(t *testing.T) {
 		RendererVersion: "2.91.0",
 	}
 
-	rd := Render{
-		myTask:  &tas,
-		myNode:  &nd,
-		Percent: "",
-		Mem:     "",
-	}
+	nodesT := new(sync.Map)
+	nodesT.Store(nd.Name+"//"+nd.IP, nd)
+
+	rendersT := new(sync.Map)
+
+	tasksT := new(sync.Map)
+	newMap := new(sync.Map)
+	tmpMap, _ := tasksT.LoadOrStore(tas.ID, newMap)
+	tmpMap.(*sync.Map).Store(tas.Frame, tas)
+
+	DBT := fifo.NewQueue()
 
 	ws := WorkingSet{
 		Db:          db,
 		Config:      cg,
-		RenderNodes: []*node.Node{&nd},
-		Renders:     []*Render{},
-		Uploading:   []*render.Task{},
-		Waiting:     []*render.Task{&tas},
-		Completed:   []*render.Task{},
+		RenderNodes: nodesT,
+		Renders:     rendersT,
+		Tasks:       tasksT,
+		DBTransacts: DBT,
 	}
 
-	tas2 := tas
-	tas2.State = "rendering"
-
-	expectedReturn := []render.Task{tas2}
 	expectedNodeState := []string{"rendering"}
+	expectedFrameState := []string{"rendering"}
 
 	for i := 0; i < len(dataTab); i++ {
 
@@ -291,12 +304,10 @@ func TestGetJob(t *testing.T) {
 
 		//Asserts
 		assert.Equal("application/json", resp.Header.Get("Content-Type"), "Bad header in test %d", i)
-		assert.Equal(expectedReturn[i], *dt, "Bad task returned")
-		assert.Equal(expectedNodeState[i], ws.RenderNodes[0].State(), "Bad state assigned to node")
-
-		if len(ws.Renders) > 0 {
-			assert.Equal(rd, *ws.Renders[0])
-		}
+		assert.Equal(tas.ID, dt.ID, "Bad task returned")
+		assert.Equal(tas.Frame, dt.Frame, "Bad task returned")
+		assert.Equal(expectedNodeState[i], nd.State(), "Bad state assigned to node")
+		assert.Equal(expectedFrameState[i], tas.State, "Bad state assigned to task")
 	}
 
 	os.RemoveAll("../../testdata/rendererapi_tests/getJob")

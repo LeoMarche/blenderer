@@ -106,6 +106,7 @@ func TestLaunchrender(t *testing.T) {
 	assert.Equal(nil, err, "Returned an error while copying render file")
 	_, err = io.Copy(destination, src)
 	assert.Equal(nil, err, "Returned an error while copying render file")
+	assert.FileExists(filepath.Join("tmp", "cube.blend"), "There was a problem during the copy of %s to %s", src, destination)
 
 	task0 := Task{
 		Project:         "test_p",
@@ -123,9 +124,14 @@ func TestLaunchrender(t *testing.T) {
 		Renderer: &r0,
 	}
 
-	_, err = rt0.LaunchRender()
+	cmd, err := rt0.LaunchRender()
 
-	assert.Equal(nil, err, "Returned an error while launchin rendering")
+	assert.Equal(nil, err, "Returned an error while launching rendering")
+
+	err = cmd.Wait()
+
+	assert.Equal(nil, err, "Returned an error while waiting for render to complete")
+
 	assert.FileExists(filepath.Join("tmp", "cube.blend0001.png"))
 }
 
