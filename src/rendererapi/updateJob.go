@@ -134,16 +134,15 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 				st = "The frame is like " + rst
 			}
 		}
-
-		w.Header().Set("Content-Type", "application/json")
-		js, err := json.Marshal(ReturnValue{
-			State: st,
-		})
-
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Write(js)
 	}
+	w.Header().Set("Content-Type", "application/json")
+	js, err := json.Marshal(ReturnValue{
+		State: st,
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write(js)
 }

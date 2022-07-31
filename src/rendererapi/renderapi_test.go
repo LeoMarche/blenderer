@@ -72,6 +72,221 @@ func TestGetIP(t *testing.T) {
 	assert.Equal(ip, "1.2.3.4")
 }
 
+func TestAbortJob(t *testing.T) {
+	assert := assert.New(t)
+
+	dataTab := []url.Values{{}, {}}
+	//Creating request and recorder
+	dataTab[0].Set("api_key", "test_api")
+	dataTab[0].Set("name", "localhost")
+	dataTab[0].Set("id", "test_api")
+
+	dataTab[1].Set("api_key", "test_api")
+	dataTab[1].Set("name", "localhost")
+	dataTab[1].Set("id", "false_test_api")
+
+	expectedNodeState := []string{"rendering", "rendering"}
+	expectedReturnCode := []string{"OK", "error: can't find job"}
+	expectedRenderState := []string{"abort", "rendering"}
+
+	for i := 0; i < len(dataTab); i++ {
+
+		//Creating ws for handling
+		cg := Configuration{
+			Folder:      "",
+			DBName:      "",
+			Certname:    "",
+			UserAPIKeys: []string{"test_api"},
+		}
+
+		nd := &node.Node{
+			Name:   "localhost",
+			IP:     "127.0.0.1",
+			APIKey: "test_api",
+		}
+		nd.SetState("rendering")
+
+		tas := &render.Task{
+			Project:         "cube",
+			ID:              "test_api",
+			Input:           "cube.blend",
+			Output:          "cube.blend",
+			Frame:           127,
+			State:           "rendering",
+			RendererName:    "blender",
+			RendererVersion: "2.91.0",
+		}
+
+		rd := &Render{
+			myTask:  tas,
+			myNode:  nd,
+			Percent: "0",
+			Mem:     "0",
+		}
+
+		nodesT := new(sync.Map)
+		nodesT.Store(nd.Name+"//"+nd.IP, nd)
+
+		rendersT := new(sync.Map)
+		newRenderMap := new(sync.Map)
+		tmpRenderMap, _ := rendersT.LoadOrStore(tas.ID, newRenderMap)
+		tmpRenderMap.(*sync.Map).Store(tas.Frame, rd)
+
+		tasksT := new(sync.Map)
+		newMap := new(sync.Map)
+		tmpMap, _ := tasksT.LoadOrStore(tas.ID, newMap)
+		tmpMap.(*sync.Map).Store(tas.Frame, tas)
+
+		DBT := fifo.NewQueue()
+
+		ws := WorkingSet{
+			Config:      cg,
+			RenderNodes: nodesT,
+			Renders:     rendersT,
+			Tasks:       tasksT,
+			DBTransacts: DBT,
+		}
+
+		tas.SetState("rendering")
+		nd.SetState("rendering")
+
+		//Creating request
+		r, _ := http.NewRequest(http.MethodPost, "https://127.0.0.1/abortJob", strings.NewReader(dataTab[i].Encode()))
+		r.RemoteAddr = "127.0.0.1:1001"
+		r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Add("Content-Length", strconv.Itoa(len(dataTab[i].Encode())))
+
+		w := httptest.NewRecorder()
+
+		//Running handler
+		ws.AbortJob(w, r)
+		resp := w.Result()
+		body, _ := ioutil.ReadAll(resp.Body)
+		dt := new(ReturnValue)
+		json.Unmarshal(body, dt)
+
+		//Asserts
+		testNode, ok := nodesT.Load("localhost" + "//127.0.0.1")
+		assert.Equal(true, ok, "Couldn't retrieve the node after posting it in test %d", i)
+		assert.Equal("application/json", resp.Header.Get("Content-Type"), "Bad header in test %d", i)
+		assert.Equal(expectedNodeState[i], testNode.(*node.Node).State(), "Bad state assigned to node in test %d", i)
+		assert.Equal(expectedReturnCode[i], dt.State, "Bad state assigned to task in test %d", i)
+		assert.Equal(expectedRenderState[i], tas.State, "Invalid task state after aborting in test %d, i")
+	}
+}
+
+func TestErrorNode(t *testing.T) {
+	assert := assert.New(t)
+
+	dataTab := []url.Values{{}, {}}
+	//Creating request and recorder
+	dataTab[0].Set("api_key", "test_api")
+	dataTab[0].Set("name", "localhost")
+
+	dataTab[1].Set("api_key", "test_api")
+	dataTab[1].Set("name", "localhost2")
+
+	expectedNodeState := []string{"error", "rendering"}
+	expectedReturnCode := []string{"Done", "Couldn't find matching node"}
+	expectedRenderState := []string{"waiting", "rendering"}
+	expectedRenderDeleted := []bool{true, false}
+
+	for i := 0; i < len(dataTab); i++ {
+
+		//Creating ws for handling
+		cg := Configuration{
+			Folder:      "",
+			DBName:      "",
+			Certname:    "",
+			UserAPIKeys: []string{"test_api"},
+		}
+
+		nd := &node.Node{
+			Name:   "localhost",
+			IP:     "127.0.0.1",
+			APIKey: "test_api",
+		}
+		nd.SetState("rendering")
+
+		tas := &render.Task{
+			Project:         "cube",
+			ID:              "test_api",
+			Input:           "cube.blend",
+			Output:          "cube.blend",
+			Frame:           127,
+			State:           "rendering",
+			RendererName:    "blender",
+			RendererVersion: "2.91.0",
+		}
+
+		rd := &Render{
+			myTask:  tas,
+			myNode:  nd,
+			Percent: "0",
+			Mem:     "0",
+		}
+
+		nodesT := new(sync.Map)
+		nodesT.Store(nd.Name+"//"+nd.IP, nd)
+
+		rendersT := new(sync.Map)
+		newRenderMap := new(sync.Map)
+		tmpRenderMap, _ := rendersT.LoadOrStore(tas.ID, newRenderMap)
+		tmpRenderMap.(*sync.Map).Store(tas.Frame, rd)
+
+		tasksT := new(sync.Map)
+		newMap := new(sync.Map)
+		tmpMap, _ := tasksT.LoadOrStore(tas.ID, newMap)
+		tmpMap.(*sync.Map).Store(tas.Frame, tas)
+
+		DBT := fifo.NewQueue()
+
+		ws := WorkingSet{
+			Config:      cg,
+			RenderNodes: nodesT,
+			Renders:     rendersT,
+			Tasks:       tasksT,
+			DBTransacts: DBT,
+		}
+
+		//Creating request
+		r, _ := http.NewRequest(http.MethodPost, "https://127.0.0.1/errorNode", strings.NewReader(dataTab[i].Encode()))
+		r.RemoteAddr = "127.0.0.1:1001"
+		r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Add("Content-Length", strconv.Itoa(len(dataTab[i].Encode())))
+
+		w := httptest.NewRecorder()
+
+		//Running handler
+		ws.ErrorNode(w, r)
+		resp := w.Result()
+		body, _ := ioutil.ReadAll(resp.Body)
+		dt := new(ReturnValue)
+		json.Unmarshal(body, dt)
+
+		//Asserts
+		testNode, ok := nodesT.Load("localhost" + "//127.0.0.1")
+		assert.Equal(true, ok, "Couldn't retrieve the node after posting it in test %d", i)
+		assert.Equal("application/json", resp.Header.Get("Content-Type"), "Bad header in test %d", i)
+		assert.Equal(expectedNodeState[i], testNode.(*node.Node).State(), "Bad state assigned to node in test %d", i)
+		assert.Equal(expectedReturnCode[i], dt.State, "Bad state assigned to task in test %d", i)
+		assert.Equal(expectedRenderState[i], tas.State, "Bad state assigner to task when putting node in error in test %d", i)
+		tmpRd, ok := rendersT.Load(tas.ID)
+		if expectedRenderDeleted[i] {
+			if ok {
+				_, ok2 := tmpRd.(*sync.Map).Load(tas.Frame)
+				assert.Equal(false, ok2, "Render should have been deleted but is not in test %d", i)
+			}
+		} else {
+			assert.Equal(true, ok, "Render has been deleted and it shouldn't have in test %d", i)
+			if ok {
+				_, ok2 := tmpRd.(*sync.Map).Load(tas.Frame)
+				assert.Equal(true, ok2, "Render has been deleted and it shouldn't have in test %d", i)
+			}
+		}
+	}
+}
+
 func TestUpdateJob(t *testing.T) {
 
 	assert := assert.New(t)
@@ -107,7 +322,7 @@ func TestUpdateJob(t *testing.T) {
 	dataTab[2].Set("name", "localhost")
 
 	dataTab[3].Set("api_key", "test_api")
-	dataTab[3].Set("id", "test_api")
+	dataTab[3].Set("id", "wrong_test_api")
 	dataTab[3].Set("frame", "127")
 	dataTab[3].Set("state", "rendered")
 	dataTab[3].Set("percent", "100.0")
@@ -121,76 +336,76 @@ func TestUpdateJob(t *testing.T) {
 	dataTab[4].Set("mem", "0.0")
 	dataTab[4].Set("name", "localhost")
 
-	//Creating ws for handling
-	cg := Configuration{
-		Folder:      "",
-		DBName:      "../../testdata/rendererapi_tests/updateJob/testUpdateJob.sql",
-		Certname:    "",
-		UserAPIKeys: []string{"test_api"},
-	}
-
-	db, _ := rendererdb.LoadDatabase(cg.DBName)
-
-	nd := &node.Node{
-		Name:   "localhost",
-		IP:     "127.0.0.1",
-		APIKey: "test_api",
-	}
-	nd.SetState("rendering")
-
-	tas := &render.Task{
-		Project:         "cube",
-		ID:              "test_api",
-		Input:           "cube.blend",
-		Output:          "cube.blend",
-		Frame:           127,
-		State:           "rendering",
-		RendererName:    "blender",
-		RendererVersion: "2.91.0",
-	}
-
-	rd := &Render{
-		myTask:  tas,
-		myNode:  nd,
-		Percent: "0.0",
-		Mem:     "0.0",
-	}
-
-	nodesT := new(sync.Map)
-	nodesT.Store(nd.Name+"//"+nd.IP, nd)
-
-	rendersT := new(sync.Map)
-	newMap := new(sync.Map)
-	tmpMap, _ := rendersT.LoadOrStore(tas.ID, newMap)
-	tmpMap.(*sync.Map).Store(tas.Frame, rd)
-
-	tasksT := new(sync.Map)
-	newMap2 := new(sync.Map)
-	tmpMap2, _ := tasksT.LoadOrStore(tas.ID, newMap2)
-	tmpMap2.(*sync.Map).Store(tas.Frame, tas)
-
-	DBT := fifo.NewQueue()
-	ws := WorkingSet{
-		Db:          db,
-		Config:      cg,
-		RenderNodes: nodesT,
-		Renders:     rendersT,
-		Tasks:       tasksT,
-		DBTransacts: DBT,
-	}
-
-	expectedMem := []string{"2.0", "2.0", "0.0", "0.0", "0.0"}
-	expectedPercent := []string{"1.0", "1.0", "100.0", "100.0", "100.0"}
+	expectedMem := []string{"2.0", "0.0", "0.0", "0.0", "0.0"}
+	expectedPercent := []string{"1.0", "0.0", "100.0", "0.0", "0.0"}
 	expectedReturn := []ReturnValue{
 		{State: "OK"},
 		{State: "Error : No matching Renders"},
 		{State: "OK"},
 		{State: "Error : No matching Renders"},
 		{State: "Error : Missing Parameter"}}
-	expectedNodeState := []string{"rendering", "rendering", "available", "available", "available"}
-	expectedState := []string{"rendering", "rendering", "rendered", "rendered", "rendered"}
+	expectedNodeState := []string{"rendering", "rendering", "available", "rendering", "rendering"}
+	expectedState := []string{"rendering", "rendering", "rendered", "rendering", "rendering"}
 
 	for i := 0; i < len(dataTab); i++ {
+
+		//Creating ws for handling
+		cg := Configuration{
+			Folder:      "",
+			DBName:      "../../testdata/rendererapi_tests/updateJob/testUpdateJob.sql",
+			Certname:    "",
+			UserAPIKeys: []string{"test_api"},
+		}
+
+		db, _ := rendererdb.LoadDatabase(cg.DBName)
+
+		nd := &node.Node{
+			Name:   "localhost",
+			IP:     "127.0.0.1",
+			APIKey: "test_api",
+		}
+		nd.SetState("rendering")
+
+		tas := &render.Task{
+			Project:         "cube",
+			ID:              "test_api",
+			Input:           "cube.blend",
+			Output:          "cube.blend",
+			Frame:           127,
+			State:           "rendering",
+			RendererName:    "blender",
+			RendererVersion: "2.91.0",
+		}
+
+		rd := &Render{
+			myTask:  tas,
+			myNode:  nd,
+			Percent: "0.0",
+			Mem:     "0.0",
+		}
+
+		nodesT := new(sync.Map)
+		nodesT.Store(nd.Name+"//"+nd.IP, nd)
+
+		rendersT := new(sync.Map)
+		newMap := new(sync.Map)
+		tmpMap, _ := rendersT.LoadOrStore(tas.ID, newMap)
+		tmpMap.(*sync.Map).Store(tas.Frame, rd)
+
+		tasksT := new(sync.Map)
+		newMap2 := new(sync.Map)
+		tmpMap2, _ := tasksT.LoadOrStore(tas.ID, newMap2)
+		tmpMap2.(*sync.Map).Store(tas.Frame, tas)
+
+		DBT := fifo.NewQueue()
+		ws := WorkingSet{
+			Db:          db,
+			Config:      cg,
+			RenderNodes: nodesT,
+			Renders:     rendersT,
+			Tasks:       tasksT,
+			DBTransacts: DBT,
+		}
 
 		//Creating request
 		r, _ := http.NewRequest(http.MethodPost, "https://127.0.0.1/updateJob", strings.NewReader(dataTab[i].Encode()))
@@ -233,59 +448,59 @@ func TestGetJob(t *testing.T) {
 	dataTab[0].Set("api_key", "test_api")
 	dataTab[0].Set("name", "localhost")
 
-	//Creating ws for handling
-	cg := Configuration{
-		Folder:      "",
-		DBName:      "../../testdata/rendererapi_tests/getJob/testGetJob.sql",
-		Certname:    "",
-		UserAPIKeys: []string{"test_api"},
-	}
-
-	db, _ := rendererdb.LoadDatabase(cg.DBName)
-
-	nd := &node.Node{
-		Name:   "localhost",
-		IP:     "127.0.0.1",
-		APIKey: "test_api",
-	}
-	nd.SetState("available")
-
-	tas := &render.Task{
-		Project:         "cube",
-		ID:              "test_api",
-		Input:           "cube.blend",
-		Output:          "cube.blend",
-		Frame:           127,
-		State:           "waiting",
-		RendererName:    "blender",
-		RendererVersion: "2.91.0",
-	}
-
-	nodesT := new(sync.Map)
-	nodesT.Store(nd.Name+"//"+nd.IP, nd)
-
-	rendersT := new(sync.Map)
-
-	tasksT := new(sync.Map)
-	newMap := new(sync.Map)
-	tmpMap, _ := tasksT.LoadOrStore(tas.ID, newMap)
-	tmpMap.(*sync.Map).Store(tas.Frame, tas)
-
-	DBT := fifo.NewQueue()
-
-	ws := WorkingSet{
-		Db:          db,
-		Config:      cg,
-		RenderNodes: nodesT,
-		Renders:     rendersT,
-		Tasks:       tasksT,
-		DBTransacts: DBT,
-	}
-
 	expectedNodeState := []string{"rendering"}
 	expectedFrameState := []string{"rendering"}
 
 	for i := 0; i < len(dataTab); i++ {
+
+		//Creating ws for handling
+		cg := Configuration{
+			Folder:      "",
+			DBName:      "../../testdata/rendererapi_tests/getJob/testGetJob.sql",
+			Certname:    "",
+			UserAPIKeys: []string{"test_api"},
+		}
+
+		db, _ := rendererdb.LoadDatabase(cg.DBName)
+
+		nd := &node.Node{
+			Name:   "localhost",
+			IP:     "127.0.0.1",
+			APIKey: "test_api",
+		}
+		nd.SetState("available")
+
+		tas := &render.Task{
+			Project:         "cube",
+			ID:              "test_api",
+			Input:           "cube.blend",
+			Output:          "cube.blend",
+			Frame:           127,
+			State:           "waiting",
+			RendererName:    "blender",
+			RendererVersion: "2.91.0",
+		}
+
+		nodesT := new(sync.Map)
+		nodesT.Store(nd.Name+"//"+nd.IP, nd)
+
+		rendersT := new(sync.Map)
+
+		tasksT := new(sync.Map)
+		newMap := new(sync.Map)
+		tmpMap, _ := tasksT.LoadOrStore(tas.ID, newMap)
+		tmpMap.(*sync.Map).Store(tas.Frame, tas)
+
+		DBT := fifo.NewQueue()
+
+		ws := WorkingSet{
+			Db:          db,
+			Config:      cg,
+			RenderNodes: nodesT,
+			Renders:     rendersT,
+			Tasks:       tasksT,
+			DBTransacts: DBT,
+		}
 
 		//Creating request
 		r, _ := http.NewRequest(http.MethodPost, "https://127.0.0.1/getJob", strings.NewReader(dataTab[i].Encode()))
@@ -324,58 +539,58 @@ func TestPostNode(t *testing.T) {
 	dataTab[1].Set("api_key", "test_api")
 	dataTab[1].Set("name", "localhost2")
 
-	//Creating ws for handling
-	cg := Configuration{
-		Folder:      "",
-		DBName:      "",
-		Certname:    "",
-		UserAPIKeys: []string{"test_api"},
-	}
-
-	nd := &node.Node{
-		Name:   "localhost",
-		IP:     "127.0.0.1",
-		APIKey: "test_api",
-	}
-	nd.SetState("down")
-
-	tas := &render.Task{
-		Project:         "cube",
-		ID:              "test_api",
-		Input:           "cube.blend",
-		Output:          "cube.blend",
-		Frame:           127,
-		State:           "waiting",
-		RendererName:    "blender",
-		RendererVersion: "2.91.0",
-	}
-
-	nodesT := new(sync.Map)
-	nodesT.Store(nd.Name+"//"+nd.IP, nd)
-
-	rendersT := new(sync.Map)
-
-	tasksT := new(sync.Map)
-	newMap := new(sync.Map)
-	tmpMap, _ := tasksT.LoadOrStore(tas.ID, newMap)
-	tmpMap.(*sync.Map).Store(tas.Frame, tas)
-
-	DBT := fifo.NewQueue()
-
-	ws := WorkingSet{
-		Config:      cg,
-		RenderNodes: nodesT,
-		Renders:     rendersT,
-		Tasks:       tasksT,
-		DBTransacts: DBT,
-	}
-
 	expectedNodeState := []string{"available", "available"}
 	expectedReturnCode := []string{"Exists", "Added"}
 	nodeName := []string{"localhost", "localhost2"}
 	expectedDBOP := []int{rendererdb.UPDATENODE, rendererdb.INSERTNODE}
 
 	for i := 0; i < len(dataTab); i++ {
+
+		//Creating ws for handling
+		cg := Configuration{
+			Folder:      "",
+			DBName:      "",
+			Certname:    "",
+			UserAPIKeys: []string{"test_api"},
+		}
+
+		nd := &node.Node{
+			Name:   "localhost",
+			IP:     "127.0.0.1",
+			APIKey: "test_api",
+		}
+		nd.SetState("down")
+
+		tas := &render.Task{
+			Project:         "cube",
+			ID:              "test_api",
+			Input:           "cube.blend",
+			Output:          "cube.blend",
+			Frame:           127,
+			State:           "waiting",
+			RendererName:    "blender",
+			RendererVersion: "2.91.0",
+		}
+
+		nodesT := new(sync.Map)
+		nodesT.Store(nd.Name+"//"+nd.IP, nd)
+
+		rendersT := new(sync.Map)
+
+		tasksT := new(sync.Map)
+		newMap := new(sync.Map)
+		tmpMap, _ := tasksT.LoadOrStore(tas.ID, newMap)
+		tmpMap.(*sync.Map).Store(tas.Frame, tas)
+
+		DBT := fifo.NewQueue()
+
+		ws := WorkingSet{
+			Config:      cg,
+			RenderNodes: nodesT,
+			Renders:     rendersT,
+			Tasks:       tasksT,
+			DBTransacts: DBT,
+		}
 
 		//Creating request
 		r, _ := http.NewRequest(http.MethodPost, "https://127.0.0.1/postNode", strings.NewReader(dataTab[i].Encode()))
