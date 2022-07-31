@@ -26,34 +26,31 @@ func (ws *WorkingSet) SetAvailable(w http.ResponseWriter, r *http.Request) {
 	//Determine which node is asking for a job
 	ip := strings.Split(getIP(r), ":")[0]
 
+	//If the node asking for the job isn't registered
+	if r.FormValue("api_key") == "" || isIn(r.FormValue("api_key"), ws.Config.UserAPIKeys) == -1 {
+		http.Error(w, "404 not found.", http.StatusNotFound)
+		return
+	}
+
 	var n *node.Node
-	conf := false
+
+	rt := new(ReturnValue)
 
 	tmpNode, ok := ws.RenderNodes.Load(r.FormValue("name") + "//" + ip)
 	if ok {
 		n = tmpNode.(*node.Node)
-		conf = true
+		rt.State = "OK"
+		n.SetState("available")
+		ws.DBTransacts.Add(rendererdb.DBTransact{
+			OP:       rendererdb.UPDATENODE,
+			Argument: n,
+		})
+	} else {
+		rt.State = "Can't find node"
 	}
-
-	if !conf {
-		http.Error(w, "404 not found.", http.StatusNotFound)
-		return
-	}
-
-	//If the node asking for the job isn't registered
-	if r.FormValue("api_key") == "" || isIn(r.FormValue("api_key"), ws.Config.UserAPIKeys) == -1 || n.IP != ip {
-		http.Error(w, "404 not found.", http.StatusNotFound)
-		return
-	}
-
-	n.Free()
-	ws.DBTransacts.Add(rendererdb.DBTransact{
-		OP:       rendererdb.UPDATENODE,
-		Argument: n,
-	})
 
 	w.Header().Set("Content-Type", "application/json")
-	js, err := json.Marshal(ReturnValue{"OK"})
+	js, err := json.Marshal(rt)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
