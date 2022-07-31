@@ -311,5 +311,96 @@ func TestGetJob(t *testing.T) {
 	}
 
 	os.RemoveAll("../../testdata/rendererapi_tests/getJob")
+}
 
+func TestPostNode(t *testing.T) {
+	assert := assert.New(t)
+
+	dataTab := []url.Values{{}, {}}
+	//Creating request and recorder
+	dataTab[0].Set("api_key", "test_api")
+	dataTab[0].Set("name", "localhost")
+
+	dataTab[1].Set("api_key", "test_api")
+	dataTab[1].Set("name", "localhost2")
+
+	//Creating ws for handling
+	cg := Configuration{
+		Folder:      "",
+		DBName:      "",
+		Certname:    "",
+		UserAPIKeys: []string{"test_api"},
+	}
+
+	nd := &node.Node{
+		Name:   "localhost",
+		IP:     "127.0.0.1",
+		APIKey: "test_api",
+	}
+	nd.SetState("down")
+
+	tas := &render.Task{
+		Project:         "cube",
+		ID:              "test_api",
+		Input:           "cube.blend",
+		Output:          "cube.blend",
+		Frame:           127,
+		State:           "waiting",
+		RendererName:    "blender",
+		RendererVersion: "2.91.0",
+	}
+
+	nodesT := new(sync.Map)
+	nodesT.Store(nd.Name+"//"+nd.IP, nd)
+
+	rendersT := new(sync.Map)
+
+	tasksT := new(sync.Map)
+	newMap := new(sync.Map)
+	tmpMap, _ := tasksT.LoadOrStore(tas.ID, newMap)
+	tmpMap.(*sync.Map).Store(tas.Frame, tas)
+
+	DBT := fifo.NewQueue()
+
+	ws := WorkingSet{
+		Config:      cg,
+		RenderNodes: nodesT,
+		Renders:     rendersT,
+		Tasks:       tasksT,
+		DBTransacts: DBT,
+	}
+
+	expectedNodeState := []string{"available", "available"}
+	expectedReturnCode := []string{"Exists", "Added"}
+	nodeName := []string{"localhost", "localhost2"}
+	expectedDBOP := []int{rendererdb.UPDATENODE, rendererdb.INSERTNODE}
+
+	for i := 0; i < len(dataTab); i++ {
+
+		//Creating request
+		r, _ := http.NewRequest(http.MethodPost, "https://127.0.0.1/postNode", strings.NewReader(dataTab[i].Encode()))
+		r.RemoteAddr = "127.0.0.1:1001"
+		r.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		r.Header.Add("Content-Length", strconv.Itoa(len(dataTab[i].Encode())))
+
+		w := httptest.NewRecorder()
+
+		//Running handler
+		ws.PostNode(w, r)
+		resp := w.Result()
+		body, _ := ioutil.ReadAll(resp.Body)
+		dt := new(ReturnValue)
+		json.Unmarshal(body, dt)
+
+		//Asserts
+		testNode, ok := nodesT.Load(nodeName[i] + "//127.0.0.1")
+		assert.Equal(true, ok, "Couldn't retrieve the node after posting it in test %d", i)
+		assert.Equal("application/json", resp.Header.Get("Content-Type"), "Bad header in test %d", i)
+		assert.Equal(expectedNodeState[i], testNode.(*node.Node).State(), "Bad state assigned to node in test %d", i)
+		assert.Equal(expectedReturnCode[i], dt.State, "Bad state assigned to task in test %d", i)
+		currentTrans := ws.DBTransacts.Next()
+		assert.NotEqual(nil, currentTrans, "Couldn't retrieve the DBTransaction associated withe postNode, test n°%d", i)
+		assert.Equal(expectedDBOP[i], currentTrans.(rendererdb.DBTransact).OP, "The DBTransaction created by test %d isn't correct", i)
+		assert.Equal(testNode.(*node.Node), currentTrans.(rendererdb.DBTransact).Argument, "Bad argument passed to the DBtransaction in test %d", i)
+	}
 }

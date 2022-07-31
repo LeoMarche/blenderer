@@ -25,7 +25,7 @@ func (ws *WorkingSet) PostNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var receivedNode *node.Node
+	receivedNode := new(node.Node)
 	receivedNode.Name = r.FormValue("name")
 	receivedNode.IP = strings.Split(getIP(r), ":")[0]
 	receivedNode.APIKey = r.FormValue("api_key")
