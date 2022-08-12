@@ -9,6 +9,7 @@ import (
 
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/render"
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //GetJob Handler for /getJob
@@ -97,6 +98,14 @@ func (ws *WorkingSet) GetJob(w http.ResponseWriter, r *http.Request) {
 								myTask: tsk.(*render.Task),
 								myNode: n,
 							}
+							ws.DBTransacts.Add(&rendererdb.DBTransact{
+								OP:       rendererdb.UPDATETASK,
+								Argument: rd.myTask,
+							})
+							ws.DBTransacts.Add(&rendererdb.DBTransact{
+								OP:       rendererdb.UPDATENODE,
+								Argument: rd.myNode,
+							})
 							valid = true
 						}
 					}

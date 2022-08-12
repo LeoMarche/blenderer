@@ -38,13 +38,13 @@ func (ws *WorkingSet) PostNode(w http.ResponseWriter, r *http.Request) {
 	if loaded {
 		rt = ReturnValue{"Exists"}
 		n.(*node.Node).SetState("available")
-		ws.DBTransacts.Add(rendererdb.DBTransact{
+		ws.DBTransacts.Add(&rendererdb.DBTransact{
 			OP:       rendererdb.UPDATENODE,
 			Argument: n.(*node.Node),
 		})
 	} else {
 		rt = ReturnValue{"Added"}
-		ws.DBTransacts.Add(rendererdb.DBTransact{
+		ws.DBTransacts.Add(&rendererdb.DBTransact{
 			OP:       rendererdb.INSERTNODE,
 			Argument: n.(*node.Node),
 		})

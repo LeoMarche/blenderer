@@ -106,14 +106,14 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 
 					//Updating database and freeing node for further renders
 					t.myNode.Free()
-					ws.DBTransacts.Add(rendererdb.DBTransact{
+					ws.DBTransacts.Add(&rendererdb.DBTransact{
 						OP:       rendererdb.UPDATENODE,
 						Argument: t.myNode,
 					})
 
 					//Removing task from Renders and updating database
 					tmpMap.(*sync.Map).Delete(fr)
-					ws.DBTransacts.Add(rendererdb.DBTransact{
+					ws.DBTransacts.Add(&rendererdb.DBTransact{
 						OP:       rendererdb.UPDATETASK,
 						Argument: t.myTask,
 					})

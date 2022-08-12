@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/render"
@@ -286,7 +287,7 @@ func DBTransactRoutines(db *sql.DB, transacts *fifo.Queue, stopDB *bool) {
 			case 0:
 				err := UpdateTaskInDB(db, arg.(*render.Task))
 				if err != nil {
-					fmt.Println("Error when trying to update Task in DB")
+					fmt.Printf("error when trying to update Task in DB : %s\n", err.Error())
 				}
 			case 1:
 				err := InsertProjectsInDB(db, arg.([]*render.Task))
@@ -296,7 +297,7 @@ func DBTransactRoutines(db *sql.DB, transacts *fifo.Queue, stopDB *bool) {
 			case 2:
 				err := UpdateNodeInDB(db, arg.(*node.Node))
 				if err != nil {
-					fmt.Println("Error when trying to update Node in DB")
+					fmt.Printf("Error when trying to update Node in DB : %s\n", err.Error())
 				}
 			case 3:
 				err := InsertNodeInDB(db, arg.(*node.Node))
@@ -307,6 +308,7 @@ func DBTransactRoutines(db *sql.DB, transacts *fifo.Queue, stopDB *bool) {
 
 			t = transacts.Next()
 		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	fmt.Println("DBTransactRoutine received stopping signal, exiting now !")

@@ -126,13 +126,13 @@ func TestLaunchrender(t *testing.T) {
 
 	cmd, err := rt0.LaunchRender()
 
-	assert.Equal(nil, err, "Returned an error while launching rendering")
+	assert.NoError(err)
 
 	err = cmd.Wait()
 
-	assert.Equal(nil, err, "Returned an error while waiting for render to complete")
+	assert.NoError(err)
 
-	assert.FileExists(filepath.Join("tmp", "cube.blend0001.png"))
+	assert.FileExists(filepath.Join("tmp", "cube.blend00001.png"))
 }
 
 func TestCheckRender(t *testing.T) {

@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log"
 	"os/exec"
 	"regexp"
@@ -92,7 +93,8 @@ func (t *Task) SetState(state string) {
 //LaunchRender launches the render on the renderer
 func (rt *RendererTask) LaunchRender() (*exec.Cmd, error) {
 	if rt.Renderer.Name == "blender" {
-		cmd := exec.Command(rt.Renderer.Executable, "-b", rt.Task.Input, "-o", rt.Task.Output, "-f", strconv.Itoa(rt.Task.Frame))
+		fmt.Println(rt.Renderer.Executable, rt.Task.Input, rt.Task.Output, rt.Task.Frame)
+		cmd := exec.Command(rt.Renderer.Executable, "-b", "-noaudio", rt.Task.Input, "-o", rt.Task.Output+"#####", "-F", "PNG", "-f", strconv.Itoa(rt.Task.Frame))
 		cmd.Stdout = &rt.Log
 		a := cmd.Start()
 		return cmd, a
