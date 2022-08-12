@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/LeoMarche/blenderer/src/render"
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //UploadCompleted must be triggered by client when the upload is completed in the good folder
@@ -48,6 +49,10 @@ func (ws *WorkingSet) UploadCompleted(w http.ResponseWriter, r *http.Request) {
 			if ok {
 				tmpMap.(*sync.Map).Range(func(k, v interface{}) bool {
 					v.(*render.Task).SetState("waiting")
+					ws.DBTransacts.Add(&rendererdb.DBTransact{
+						OP:       rendererdb.UPDATETASK,
+						Argument: v.(*render.Task),
+					})
 					return true
 				})
 			}

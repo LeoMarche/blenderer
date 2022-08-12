@@ -279,8 +279,8 @@ func DBTransactRoutines(db *sql.DB, transacts *fifo.Queue, stopDB *bool) {
 	for !(*stopDB) {
 		t := transacts.Next()
 		for t != nil {
-			OP := t.(DBTransact).OP
-			arg := t.(DBTransact).Argument
+			OP := t.(*DBTransact).OP
+			arg := t.(*DBTransact).Argument
 
 			switch OP {
 			case 0:

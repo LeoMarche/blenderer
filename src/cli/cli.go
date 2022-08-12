@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -56,6 +58,61 @@ func getInput(reader *bufio.Reader) string {
 	// convert CRLF to LF
 	text = strings.Replace(text, "\n", "", -1)
 	return text
+}
+
+func uploadFile(serverIP, ID, filepath string) error {
+	c, err := net.Dial("tcp", serverIP)
+	if err != nil {
+		return err
+	}
+	st, err := os.Stat(filepath)
+	if err != nil {
+		return err
+	}
+	toSend := []byte("SEND " + strconv.FormatInt(st.Size(), 10) + " " + ID + " " + path.Base(filepath))
+	_, err = c.Write(toSend)
+	if err != nil {
+		return err
+	}
+	src, err := os.Open(filepath)
+	if err != nil {
+		return err
+	}
+
+	buf := make([]byte, 1024)
+	n, err := c.Read(buf)
+	if err != nil {
+		return err
+	}
+	status := string(buf[:n])
+
+	if status != "READY" {
+		return fmt.Errorf("encountered status code %s instead of READY when trying to upload", status)
+	}
+	buf = make([]byte, 1024)
+	var nRead int64
+	nRead = 0
+
+	for nRead != st.Size() {
+		n, err := src.Read(buf)
+		if err != nil {
+			return err
+		}
+		nRead += int64(n)
+		c.Write(buf[:n])
+	}
+
+	buf = make([]byte, 1024)
+	n, err = c.Read(buf)
+	if err != nil {
+		return err
+	}
+	fin := string(buf[:n])
+
+	if fin != "SUCCESS" {
+		return fmt.Errorf("encountered bad status after finishing upload : %s instead of SUCCESS", fin)
+	}
+	return nil
 }
 
 func postJob(APIendpoint, APIkey, project, input, output, frameStart, frameStop, rendererName, rendererVersion, startTime string, client *http.Client, target interface{}) error {
@@ -131,12 +188,50 @@ func main() {
 			"Enter 'postJob' to post a new job",
 			"Enter 'uploadCompleted' to tell the API an upload is complete",
 			"Enter 'getAllRenders' to get all renders",
+			"Enter 'full' to upload a file and create the task",
 		)
 		fmt.Print("-> ")
 
 		text := getInput(reader)
 
 		switch text {
+		case "full":
+			fmt.Print("File path : ")
+			fPath := getInput(reader)
+			fmt.Print("frameStart : ")
+			fStart := getInput(reader)
+			fmt.Print("frameStop : ")
+			fStop := getInput(reader)
+			fmt.Print("renderer Name : ")
+			rName := getInput(reader)
+			fmt.Print("renderer Version : ")
+			rVer := getInput(reader)
+			fmt.Print("server IP : ")
+			sIP := getInput(reader)
+			startTime := strconv.FormatInt(time.Now().UnixNano(), 10)
+			up := new(rendererapi.Upload)
+			err := postJob(*URL, *apiKey, path.Base(fPath), path.Base(fPath), path.Base(fPath), fStart, fStop, rName, rVer, startTime, client, up)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println(up.Token, up.Project, up.State)
+			err = uploadFile(sIP+":9005", up.Token, fPath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			st, err := os.Stat(fPath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			size := strconv.FormatInt(st.Size(), 10)
+			ID := up.Token
+			rv := new(rendererapi.ReturnValue)
+			err = uploadCompleted(*URL, *apiKey, path.Base(fPath), ID, size, path.Base(fPath), client, rv)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Println(rv.State)
+
 		case "postJob":
 			fmt.Print("project Name : ")
 			pName := getInput(reader)

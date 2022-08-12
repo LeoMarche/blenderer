@@ -8,6 +8,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func handleSender(conn net.Conn, l int, id, fileName, filesFolder string) {
@@ -57,13 +58,13 @@ func handleReceiver(conn net.Conn, id, fileName, filesFolder string) {
 	var err error
 
 	if st, err = os.Stat(filepath); err != nil {
-		conn.Write([]byte("ABORT"))
+		conn.Write([]byte("ABORT 0"))
 		return
 	}
 
 	f, err := os.Open(filepath)
 	if err != nil {
-		conn.Write([]byte("ABORT"))
+		conn.Write([]byte("ABORT 0"))
 		return
 	}
 
@@ -97,12 +98,13 @@ func handleReceiver(conn net.Conn, id, fileName, filesFolder string) {
 		conn.Write([]byte("ABORT"))
 		return
 	}
-
 }
 
 func handleClient(conn net.Conn, filesFolder string) {
 	var buf [1024]byte
-	n, err := conn.Read(buf[0:])
+
+	n, err := conn.Read(buf[:])
+
 	if err != nil {
 		conn.Write([]byte("ABORT"))
 		return
@@ -130,24 +132,43 @@ func handleClient(conn net.Conn, filesFolder string) {
 	}
 }
 
-func StartListening(filesList *[]string, filesFolder string, mustStop *bool) {
+func StartListening(filesFolder string, mustStop *bool) {
 	service := ":9005"
 	tcpAddr, err := net.ResolveTCPAddr("tcp4", service)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	listener, err := net.ListenTCP("rcp", tcpAddr)
+	listener, err := net.ListenTCP("tcp", tcpAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	tcpConnsTab := new([]*net.Conn)
+
+	go func() {
+
+		for {
+			conn, err := listener.Accept()
+			*tcpConnsTab = append(*tcpConnsTab, &conn)
+			if err == nil {
+				go func() {
+					handleClient(conn, filesFolder)
+					conn.Close()
+				}()
+			}
+		}
+
+	}()
+
 	for !(*mustStop) {
-		conn, _ := listener.Accept()
-		go func() {
-			handleClient(conn, filesFolder)
-			conn.Close()
-		}()
+		time.Sleep(time.Second)
+	}
+
+	listener.Close()
+
+	for _, c := range *tcpConnsTab {
+		(*c).Close()
 	}
 
 	listener.Close()

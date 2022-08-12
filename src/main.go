@@ -9,6 +9,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/LeoMarche/blenderer/src/filexchange"
 	"github.com/LeoMarche/blenderer/src/node"
 	"github.com/LeoMarche/blenderer/src/rendererapi"
 	"github.com/LeoMarche/blenderer/src/rendererdb"
@@ -115,6 +116,11 @@ func run(configPath string) {
 		DBTransacts: transacts,
 		StopDB:      stopDB,
 	}
+
+	fmt.Println("### Starting file server")
+	b := new(bool)
+	*b = false
+	go filexchange.StartListening(ws.Config.Folder, b)
 
 	fmt.Println("### Starting web server")
 	handleRequests(&ws)
