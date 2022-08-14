@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -15,7 +14,6 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/LeoMarche/blenderer/src/rendererapi"
@@ -24,6 +22,7 @@ import (
 var certPath = flag.String("c", "../host.cert", "Path to the SSL cert for connecting to the api")
 var apiKey = flag.String("k", "sample_unsecure", "API key to use to connect to the API")
 var URL = flag.String("u", "https://localhost:9000", "URL to use to connect to the API")
+var fileServer = flag.String("fs", "localhost:9005", "IP and port of the fileserver distributing the render files")
 var insecure = flag.Bool("i", false, "set this flag to allow insecure connections to API")
 
 func initialize() *http.Client {
@@ -51,13 +50,6 @@ func initialize() *http.Client {
 	}
 	tr := &http.Transport{TLSClientConfig: config}
 	return &http.Client{Transport: tr}
-}
-
-func getInput(reader *bufio.Reader) string {
-	text, _ := reader.ReadString('\n')
-	// convert CRLF to LF
-	text = strings.Replace(text, "\n", "", -1)
-	return text
 }
 
 func uploadFile(serverIP, ID, filepath string) error {
@@ -177,107 +169,116 @@ func getAllRenders(APIendpoint, APIkey string, client *http.Client, target inter
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
+func customUsage() {
+	fmt.Fprintf(flag.CommandLine.Output(), "Usage : \n")
+
+	fmt.Fprintf(flag.CommandLine.Output(), "    ./cli <flags> <operation>\n\n")
+
+	fmt.Fprintf(flag.CommandLine.Output(), "Flags : \n")
+
+	flag.VisitAll(func(f *flag.Flag) {
+		fmt.Fprintf(flag.CommandLine.Output(), "    - %s <%s>, description : %s\n", f.Name, f.Value, f.Usage)
+	})
+
+	fmt.Fprint(flag.CommandLine.Output(), "\n")
+
+	operationsHelp := `Operations :
+    post-job <file> <frameStart> <frameStop> <rendererName> <rendererVersion>
+        Description:
+            Posts a new render to the rendering system
+        Arguments:
+            <file> : path to the file that needs to be posted
+            <frameStart> : number of the initial frame to render
+            <frameStop> : number of the last frame to render
+            <rendererName> : name of the renderer to use
+            <rendererVersion> : version of the renderer to use
+    get-all
+        Description:
+            Get all tasks handled by the rendering system and returns stats
+
+`
+	fmt.Fprint(flag.CommandLine.Output(), operationsHelp)
+
+	examplesHelp := `Examples :
+    Post a new render:
+        ./cli -c dummy_cert.cert -fs fil.server:9005 -i -k secured_key -u api.server:9000 post-job dummy.blend 1 5 blender 2.91.0
+    Get stats on renders:
+        ./cli -c dummy_cert.cert -fs fil.server:9005 -i -k secured_key -u api.server:9000 get-all
+
+`
+
+	fmt.Fprint(flag.CommandLine.Output(), examplesHelp)
+
+}
+
 func main() {
+
+	flag.Usage = customUsage
+
 	flag.Parse()
 	client := initialize()
-	stop := false
-	reader := bufio.NewReader(os.Stdin)
 
-	for !stop {
-		fmt.Println(
-			"Enter 'postJob' to post a new job",
-			"Enter 'uploadCompleted' to tell the API an upload is complete",
-			"Enter 'getAllRenders' to get all renders",
-			"Enter 'full' to upload a file and create the task",
-		)
-		fmt.Print("-> ")
+	argTab := flag.Args()
 
-		text := getInput(reader)
+	command := argTab[0]
 
-		switch text {
-		case "full":
-			fmt.Print("File path : ")
-			fPath := getInput(reader)
-			fmt.Print("frameStart : ")
-			fStart := getInput(reader)
-			fmt.Print("frameStop : ")
-			fStop := getInput(reader)
-			fmt.Print("renderer Name : ")
-			rName := getInput(reader)
-			fmt.Print("renderer Version : ")
-			rVer := getInput(reader)
-			fmt.Print("server IP : ")
-			sIP := getInput(reader)
-			startTime := strconv.FormatInt(time.Now().UnixNano(), 10)
-			up := new(rendererapi.Upload)
-			err := postJob(*URL, *apiKey, path.Base(fPath), path.Base(fPath), path.Base(fPath), fStart, fStop, rName, rVer, startTime, client, up)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Println(up.Token, up.Project, up.State)
-			err = uploadFile(sIP+":9005", up.Token, fPath)
-			if err != nil {
-				log.Fatal(err)
-			}
-			st, err := os.Stat(fPath)
-			if err != nil {
-				log.Fatal(err)
-			}
-			size := strconv.FormatInt(st.Size(), 10)
-			ID := up.Token
-			rv := new(rendererapi.ReturnValue)
-			err = uploadCompleted(*URL, *apiKey, path.Base(fPath), ID, size, path.Base(fPath), client, rv)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Println(rv.State)
+	switch command {
+	case "post-job":
+		// check if the correct number of arguments was given
+		if len(argTab) != 6 {
+			log.Fatal(fmt.Errorf("post-job called with %d arguments instead of 6", len(argTab)))
+		}
 
-		case "postJob":
-			fmt.Print("project Name : ")
-			pName := getInput(reader)
-			fmt.Print("Input Name : ")
-			iName := getInput(reader)
-			fmt.Print("Output Name : ")
-			oName := getInput(reader)
-			fmt.Print("frameStart : ")
-			fStart := getInput(reader)
-			fmt.Print("frameStop : ")
-			fStop := getInput(reader)
-			fmt.Print("renderer Name : ")
-			rName := getInput(reader)
-			fmt.Print("renderer Version : ")
-			rVer := getInput(reader)
-			startTime := strconv.FormatInt(time.Now().UnixNano(), 10)
-			up := new(rendererapi.Upload)
-			err := postJob(*URL, *apiKey, pName, iName, oName, fStart, fStop, rName, rVer, startTime, client, up)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Println(up.Token, up.Project, up.State)
-		case "uploadCompleted":
-			fmt.Print("project Name : ")
-			pName := getInput(reader)
-			fmt.Print("Token : ")
-			id := getInput(reader)
-			fmt.Print("size : ")
-			size := getInput(reader)
-			fmt.Print("Input Name : ")
-			iName := getInput(reader)
-			rv := new(rendererapi.ReturnValue)
-			err := uploadCompleted(*URL, *apiKey, pName, id, size, iName, client, rv)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Println(rv.State)
-		case "getAllRenders":
-			ret := new([]rendererapi.TaskToSend)
-			err := getAllRenders(*URL, *apiKey, client, ret)
-			if err != nil {
-				log.Fatal(err)
-			} else {
-				fmt.Println("all good")
-			}
+		fPath := argTab[1]
+		frameStart := argTab[2]
+		frameStop := argTab[3]
+		rName := argTab[4]
+		rVer := argTab[5]
 
+		// Verify that frames can be casted to ints
+		if _, err := strconv.Atoi(frameStart); err != nil {
+			log.Fatal(fmt.Errorf("post-job called with frameStart=%s which doesn't looks like an int", frameStart))
+		}
+		if _, err := strconv.Atoi(frameStop); err != nil {
+			log.Fatal(fmt.Errorf("post-job called with frameStop=%s which doesn't looks like an int", frameStop))
+		}
+
+		startTime := strconv.FormatInt(time.Now().UnixNano(), 10)
+		up := new(rendererapi.Upload)
+		err := postJob(*URL, *apiKey, path.Base(fPath), path.Base(fPath), path.Base(fPath), frameStart, frameStop, rName, rVer, startTime, client, up)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Task created, token/ID : %s, project : %s, current state : %s\n", up.Token, up.Project, up.State)
+		err = uploadFile(*fileServer, up.Token, fPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		st, err := os.Stat(fPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		size := strconv.FormatInt(st.Size(), 10)
+		ID := up.Token
+		rv := new(rendererapi.ReturnValue)
+		err = uploadCompleted(*URL, *apiKey, path.Base(fPath), ID, size, path.Base(fPath), client, rv)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Upload done, current state : %s\n", rv.State)
+
+	case "get-all":
+		//Check the number of arguments to call get-all
+		if len(argTab) != 1 {
+			log.Fatal(fmt.Errorf("get-all called with %d arguments instead of 1", len(argTab)))
+		}
+
+		ret := new([]rendererapi.TaskToSend)
+		err := getAllRenders(*URL, *apiKey, client, ret)
+		if err != nil {
+			log.Fatal(err)
+		} else {
+			fmt.Println(*ret)
 		}
 	}
 }

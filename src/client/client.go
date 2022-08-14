@@ -327,6 +327,15 @@ func run(configPath string) {
 		config.Folder = *folderFlag
 	}
 
+	if !path.IsAbs(config.Folder) {
+		fmt.Printf("the folder path must be absolute (it appears that '%s' is not), replacing it with its absolute version ... \n", config.Folder)
+		config.Folder, err = filepath.Abs(config.Folder)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("folder path translated to %s\n", config.Folder)
+	}
+
 	client := getClient()
 	job := new(render.Task)
 
@@ -428,7 +437,6 @@ func run(configPath string) {
 			time.Sleep(5 * time.Second)
 		}
 	}
-
 }
 
 func main() {
