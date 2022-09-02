@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/LeoMarche/blenderer/src/render"
@@ -26,7 +27,7 @@ import (
 
 var nameFlag = flag.String("n", "no_name", "The name of the worker")
 var insecure = flag.Bool("i", false, "set this flag to allow insecure connections to API")
-var folderFlag = flag.String("f", "", "by setting this flag, you can optionnally provide a flag not using the config file")
+var folderFlag = flag.String("f", "", "by setting this flag, you can optionnally provide a folder not using the config file")
 
 type configuration struct {
 	API struct {
@@ -65,10 +66,10 @@ func loadConfig(configPath string) (configuration, error) {
 //SetupCloseHandler setups a handler for os interrupt
 func SetupCloseHandler() {
 	c := make(chan os.Signal, 1)
-	signal.Notify(c)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-c
-		fmt.Println("\r- Ctrl+C pressed in Terminal")
+		fmt.Println("\r- Ctrl+C pressed in Terminal, exiting now ...")
 		mustStop = true
 	}()
 }
@@ -161,12 +162,30 @@ func postNode(APIendpoint, APIkey, name string, target interface{}, client *http
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
-func setAvailable(APIendpoint, APIkey string, target interface{}, client *http.Client) error {
+func setAvailable(APIendpoint, APIkey, name string, target interface{}, client *http.Client) error {
 
 	finalEndpoint := APIendpoint + "/setAvailable"
 
 	resp, err := client.PostForm(finalEndpoint, url.Values{
-		"api_key": {APIkey}})
+		"api_key": {APIkey},
+		"name":    {name}})
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func setDown(APIendpoint, APIkey, name string, target interface{}, client *http.Client) error {
+
+	finalEndpoint := APIendpoint + "/setDown"
+
+	resp, err := client.PostForm(finalEndpoint, url.Values{
+		"api_key": {APIkey},
+		"name":    {name}})
 
 	if err != nil {
 		return err
@@ -311,6 +330,10 @@ func receiveFile(fileServer, id, srcFile, dstFolder string) error {
 
 func run(configPath string) {
 
+	// Handler when exiting
+	SetupCloseHandler()
+
+	// Parsing the flags
 	flag.Parse()
 
 	if *nameFlag == "no_name" {
@@ -336,20 +359,23 @@ func run(configPath string) {
 		fmt.Printf("folder path translated to %s\n", config.Folder)
 	}
 
+	// Register the client on the master
 	client := getClient()
 	job := new(render.Task)
-
 	resp := new(rendererapi.ReturnValue)
-
 	err = postNode(config.API.Endpoint, config.API.Key, *nameFlag, resp, client)
-
 	if err != nil || (resp.State != "Exists" && resp.State != "Added") {
 		log.Fatalf("Error during initialization : %e, state : %s", err, resp.State)
 	}
 
-	for !mustStop {
-		err = getJob(config.API.Endpoint, config.API.Key, *nameFlag, job, client)
+	rT := new(render.RendererTask)
+	var state string
+	var percent, mem float64
 
+	for !mustStop {
+
+		// Retrieve a job from the master
+		err = getJob(config.API.Endpoint, config.API.Key, *nameFlag, job, client)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -370,27 +396,31 @@ func run(configPath string) {
 			}
 
 			//Create render task
-			rT := job.MatchRenderer(config.Executables)
+			rT = job.MatchRenderer(config.Executables)
 
 			if rT != nil {
+
+				// Launch render if the rendering engine is present
+				// TODO : verify the available rendering engines on the master before assigning
 				pr, err := rT.LaunchRender()
+
+				// If error during launching render, stop the client and put the node in error for the master
+				if err != nil {
+					rt := new(rendererapi.ReturnValue)
+					errorNode(config.API.Endpoint, config.API.Key, *nameFlag, rt, client)
+					log.Fatal(err)
+				}
 
 				go func() {
 					err := pr.Wait()
 					var rt rendererapi.ReturnValue
-					if err != nil {
+					if err != nil && !mustStop {
 						errorNode(config.API.Endpoint, config.API.Key, *nameFlag, rt, client)
 						log.Fatalf("Error during rendering : %e", err)
 					}
 				}()
 
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				var state string
-				var percent, mem float64
-
+				// Wait up to 100 seconds for the render engine to start
 				for i := 0; i < 1000; i++ {
 					state, percent, mem = rT.CheckRender()
 					if state == "rendering" || state == "rendered" {
@@ -399,6 +429,7 @@ func run(configPath string) {
 					time.Sleep(100 * time.Millisecond)
 				}
 
+				// Wait for the render to end (aborted or rendered)
 				for state != "rendered" {
 					s := new(returnvalue)
 					rv := updateJob(config.API.Endpoint, config.API.Key, state, *nameFlag, rT.Task.Frame, percent, mem, rT.Task.ID, s, client)
@@ -417,29 +448,55 @@ func run(configPath string) {
 					}
 					time.Sleep(1 * time.Second)
 					state, percent, mem = rT.CheckRender()
+
+					if mustStop {
+						break
+					}
 				}
 
 				state, percent, mem = rT.CheckRender()
+
+				// Upload file if rendered
 				if state == "rendered" {
 					uploadFile(config.Fileserver, rT.Task.ID, rT.Task.Output+fmt.Sprintf("%05d", rT.Task.Frame)+".png")
 				}
+
+				// Try to update and abort process if aborted or problem
 				s := new(returnvalue)
 				rv := updateJob(config.API.Endpoint, config.API.Key, state, *nameFlag, rT.Task.Frame, percent, mem, rT.Task.ID, s, client)
 				if rv != nil || s.State != "OK" {
-					if err := pr.Process.Kill(); err != nil {
-						log.Fatal("failed to kill process: ", err)
-					}
-					setAvailable(config.API.Endpoint, config.API.Key, s, client)
+					// Kill can't return useful errors
+					pr.Process.Kill()
+					setAvailable(config.API.Endpoint, config.API.Key, *nameFlag, s, client)
 				}
 			}
 
 		} else {
-			time.Sleep(5 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
+	}
+
+	// When asked to stop
+	s := new(returnvalue)
+	if job.ID != "" && state != "rendered" {
+
+		// If a job was running, requeue it
+		err = updateJob(config.API.Endpoint, config.API.Key, "requeue", *nameFlag, rT.Task.Frame, 0.0, 0.0, rT.Task.ID, s, client)
+		if err != nil {
+			fmt.Println(err)
+		}
+		if s.State != "REQUEUED" {
+			fmt.Println(fmt.Errorf("couldn't requeue the task when quitting, state is %s", s.State))
+		}
+	}
+
+	// Update the node state in the master
+	err = setDown(config.API.Endpoint, config.API.Key, *nameFlag, s, client)
+	if err != nil {
+		fmt.Println(err)
 	}
 }
 
 func main() {
-
 	run("client.json")
 }

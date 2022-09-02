@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/LeoMarche/blenderer/src/node"
+	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
 //ErrorNode handler for /errorNode
@@ -35,14 +36,15 @@ func (ws *WorkingSet) ErrorNode(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Set Node in error and put back the task in waiting state
 		tmpNode.(*node.Node).SetState("error")
+		ws.DBTransacts.Add(rendererdb.DBTransact{
+			OP:       rendererdb.UPDATENODE,
+			Argument: tmpNode.(*node.Node),
+		})
 
 		rendersToDelete := make(map[interface{}][]interface{})
 		ws.Renders.Range(func(key, value interface{}) bool {
 			value.(*sync.Map).Range(func(key2, value2 interface{}) bool {
 				if value2.(*Render).myNode.IP == strings.Split(getIP(r), ":")[0] && value2.(*Render).myNode.Name == r.FormValue("name") {
-
-					//Set the state of the node to error
-					value2.(*Render).myNode.SetState("error")
 
 					//Add the keys to the rendersToDeletes
 					if val, ok := rendersToDelete[key]; ok {
@@ -67,6 +69,11 @@ func (ws *WorkingSet) ErrorNode(w http.ResponseWriter, r *http.Request) {
 
 						//Set the state of the renders the node was doing
 						deletedRT.(*Render).myTask.SetState("waiting")
+
+						ws.DBTransacts.Add(&rendererdb.DBTransact{
+							OP:       rendererdb.UPDATETASK,
+							Argument: deletedRT.(*Render).myTask,
+						})
 					}
 				}
 			}

@@ -10,10 +10,10 @@ import (
 	"github.com/LeoMarche/blenderer/src/rendererdb"
 )
 
-//SetAvailable Handler for /setAvailable
+//SetDown Handler for /setDown
 //The request must be a post with api_key and name
-func (ws *WorkingSet) SetAvailable(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" || r.URL.Path != "/setAvailable" {
+func (ws *WorkingSet) SetDown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" || r.URL.Path != "/setDown" {
 		http.Error(w, "404 not found.", http.StatusNotFound)
 		return
 	}
@@ -40,7 +40,7 @@ func (ws *WorkingSet) SetAvailable(w http.ResponseWriter, r *http.Request) {
 	if ok {
 		n = tmpNode.(*node.Node)
 		rt.State = "OK"
-		n.SetState("available")
+		n.SetState("down")
 		ws.DBTransacts.Add(&rendererdb.DBTransact{
 			OP:       rendererdb.UPDATENODE,
 			Argument: n,

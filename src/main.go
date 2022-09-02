@@ -83,6 +83,7 @@ func handleRequests(ws *rendererapi.WorkingSet) {
 	myRouter.HandleFunc("/uploadCompleted", ws.UploadCompleted)
 	myRouter.HandleFunc("/abortJob", ws.AbortJob)
 	myRouter.HandleFunc("/setAvailable", ws.SetAvailable)
+	myRouter.HandleFunc("/setDown", ws.SetDown)
 	myRouter.HandleFunc("/postNode", ws.PostNode)
 	myRouter.HandleFunc("/errorNode", ws.ErrorNode)
 

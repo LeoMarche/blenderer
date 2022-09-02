@@ -93,32 +93,53 @@ func (ws *WorkingSet) UpdateJob(w http.ResponseWriter, r *http.Request) {
 			//Normal frame
 			case "rendering":
 
-				//Update render stats
-				t = rdr.(*Render)
-				t.myTask.Lock()
-				t.myTask.State = r.FormValue("state")
-				t.Percent = r.FormValue("percent")
-				t.Mem = r.FormValue("mem")
-				t.myTask.Unlock()
-
-				//Handle the case 'frame rendered'
-				if t.myTask.State == "rendered" {
-
-					//Updating database and freeing node for further renders
-					t.myNode.Free()
+				if r.FormValue("state") == "requeue" {
+					st = "REQUEUED"
+					t = rdr.(*Render)
+					tmpMap.(*sync.Map).Delete(fr)
+					t.myTask.Lock()
+					t.myTask.State = "waiting"
+					t.Percent = "0.0"
+					t.Mem = "0.0"
+					t.myTask.Unlock()
+					t.myNode.SetState("available")
 					ws.DBTransacts.Add(&rendererdb.DBTransact{
 						OP:       rendererdb.UPDATENODE,
 						Argument: t.myNode,
 					})
 
-					//Removing task from Renders and updating database
-					tmpMap.(*sync.Map).Delete(fr)
 					ws.DBTransacts.Add(&rendererdb.DBTransact{
 						OP:       rendererdb.UPDATETASK,
 						Argument: t.myTask,
 					})
+				} else {
+					//Update render stats
+					t = rdr.(*Render)
+					t.myTask.Lock()
+					t.myTask.State = r.FormValue("state")
+					t.Percent = r.FormValue("percent")
+					t.Mem = r.FormValue("mem")
+					t.myTask.Unlock()
+
+					//Handle the case 'frame rendered'
+					if t.myTask.State == "rendered" {
+
+						//Updating database and freeing node for further renders
+						t.myNode.Free()
+						ws.DBTransacts.Add(&rendererdb.DBTransact{
+							OP:       rendererdb.UPDATENODE,
+							Argument: t.myNode,
+						})
+
+						//Removing task from Renders and updating database
+						tmpMap.(*sync.Map).Delete(fr)
+						ws.DBTransacts.Add(&rendererdb.DBTransact{
+							OP:       rendererdb.UPDATETASK,
+							Argument: t.myTask,
+						})
+					}
+					st = "OK"
 				}
-				st = "OK"
 
 			//Aborted frame
 			case "abort":
